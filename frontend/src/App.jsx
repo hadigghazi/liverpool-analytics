@@ -3,6 +3,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import Attack from './pages/Attack.jsx';
 import Defense from './pages/Defense.jsx';
 import Squad from './pages/Squad.jsx';
+import Transfers from './pages/Transfers.jsx';
 import Nav from './components/Nav/Nav.jsx';
 import { useSeasons } from './hooks/useData.js';
 import styles from './styles/App.module.css';
@@ -20,6 +21,7 @@ export default function App() {
     attack:    <Attack season={activeSeason} />,
     defense:   <Defense season={activeSeason} />,
     squad:     <Squad season={activeSeason} />,
+    transfers: <Transfers season={activeSeason} />,
   };
 
   return (
