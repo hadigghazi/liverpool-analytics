@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import styles from './Transfers.module.css';
 
 function formatEur(val) {
@@ -13,11 +13,21 @@ function seasonLabel(s) {
   return `20${s.slice(0, 2)}/${s.slice(2)}`;
 }
 
+const TM_PAD = { t: 16, r: 16, b: 40, l: 56 };
+
 function SquadValueChart({ data }) {
   const canvasRef = useRef(null);
+  const seriesRef = useRef([]);
+  const [tip, setTip] = useState(null);
+
+  const series = useMemo(
+    () => [...data].sort((a, b) => a.season.localeCompare(b.season)),
+    [data]
+  );
+  useEffect(() => { seriesRef.current = series; }, [series]);
 
   useEffect(() => {
-    if (!data.length) return;
+    if (!series.length) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     const W = canvas.offsetWidth;
@@ -26,10 +36,12 @@ function SquadValueChart({ data }) {
     canvas.height = H * window.devicePixelRatio;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
-    const pad = { t: 16, r: 16, b: 40, l: 56 };
+    const pad = TM_PAD;
     const cw = W - pad.l - pad.r;
     const ch = H - pad.t - pad.b;
-    const maxVal = Math.max(...data.map(d => d.total_value_eur || 0));
+    const rawMax = Math.max(...series.map(d => d.total_value_eur || 0));
+    const maxVal = rawMax > 0 ? rawMax : 1;
+    const xDenom = Math.max(1, series.length - 1);
 
     ctx.clearRect(0, 0, W, H);
 
@@ -51,8 +63,8 @@ function SquadValueChart({ data }) {
 
     // Area fill
     ctx.beginPath();
-    data.forEach((d, i) => {
-      const x = pad.l + (i / (data.length - 1)) * cw;
+    series.forEach((d, i) => {
+      const x = pad.l + (i / xDenom) * cw;
       const y = pad.t + ch - ((d.total_value_eur || 0) / maxVal) * ch;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
@@ -67,16 +79,16 @@ function SquadValueChart({ data }) {
     ctx.strokeStyle = '#c8102e';
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
-    data.forEach((d, i) => {
-      const x = pad.l + (i / (data.length - 1)) * cw;
+    series.forEach((d, i) => {
+      const x = pad.l + (i / xDenom) * cw;
       const y = pad.t + ch - ((d.total_value_eur || 0) / maxVal) * ch;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.stroke();
 
     // Dots + labels every 3
-    data.forEach((d, i) => {
-      const x = pad.l + (i / (data.length - 1)) * cw;
+    series.forEach((d, i) => {
+      const x = pad.l + (i / xDenom) * cw;
       const y = pad.t + ch - ((d.total_value_eur || 0) / maxVal) * ch;
       ctx.beginPath();
       ctx.arc(x, y, 3, 0, Math.PI * 2);
@@ -90,13 +102,77 @@ function SquadValueChart({ data }) {
         ctx.fillText(seasonLabel(d.season), x, H - pad.b + 14);
       }
     });
-  }, [data]);
+  }, [series]);
 
-  return <canvas ref={canvasRef} className={styles.canvas} />;
+  const onMoveSquad = (e) => {
+    const canvas = canvasRef.current;
+    const s = seriesRef.current;
+    if (!canvas || !s.length) return;
+    const W = canvas.clientWidth;
+    const pad = TM_PAD;
+    const cw = W - pad.l - pad.r;
+    const x = e.nativeEvent.offsetX;
+    if (x < pad.l || x > W - pad.r) {
+      setTip(null);
+      return;
+    }
+    const n = s.length;
+    if (n < 1) {
+      setTip(null);
+      return;
+    }
+    const mxs = Math.max(...s.map(d => d.total_value_eur || 0));
+    if (mxs === 0) {
+      setTip(null);
+      return;
+    }
+    const rel = (x - pad.l) / cw;
+    const idx = n === 1 ? 0 : Math.min(n - 1, Math.max(0, Math.round(rel * (n - 1))));
+    const d = s[idx];
+    if (!d) {
+      setTip(null);
+      return;
+    }
+    setTip({
+      x,
+      y: e.nativeEvent.offsetY,
+      title: seasonLabel(d.season),
+      lines: [
+        `Squad value: ${formatEur(d.total_value_eur)}`,
+        d.squad_size != null ? `Squad size: ${d.squad_size}` : null,
+        d.avg_age != null ? `Avg age: ${d.avg_age}` : null,
+      ].filter(Boolean),
+    });
+  };
+
+  if (!data.length) return null;
+
+  return (
+    <div
+      className={styles.chartWrap}
+      onMouseMove={onMoveSquad}
+      onMouseLeave={() => setTip(null)}
+    >
+      <canvas ref={canvasRef} className={styles.canvas} />
+      {tip && (
+        <div
+          className={styles.chartTooltip}
+          style={{ left: tip.x, top: tip.y }}
+        >
+          <div className={styles.ttTitle}>{tip.title}</div>
+          {tip.lines.map((line, i) => (
+            <div key={i} className={styles.ttLine}>{line}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function TransferBalanceChart({ data }) {
   const canvasRef = useRef(null);
+  const recentRef = useRef([]);
+  const [tip, setTip] = useState(null);
 
   useEffect(() => {
     if (!data.length) return;
@@ -109,10 +185,12 @@ function TransferBalanceChart({ data }) {
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
     const recent = [...data].reverse().slice(0, 15);
-    const pad = { t: 16, r: 16, b: 40, l: 56 };
+    recentRef.current = recent;
+    const pad = TM_PAD;
     const cw = W - pad.l - pad.r;
     const ch = H - pad.t - pad.b;
-    const maxVal = Math.max(...recent.map(d => Math.max(d.spent_eur || 0, d.received_eur || 0)));
+    const rawMax = Math.max(...recent.map(d => Math.max(d.spent_eur || 0, d.received_eur || 0)));
+    const maxVal = rawMax > 0 ? rawMax : 1;
     const barW = (cw / recent.length) * 0.35;
 
     ctx.clearRect(0, 0, W, H);
@@ -152,7 +230,63 @@ function TransferBalanceChart({ data }) {
     });
   }, [data]);
 
-  return <canvas ref={canvasRef} className={styles.canvas} />;
+  const onMoveBalance = (e) => {
+    const canvas = canvasRef.current;
+    const recent = recentRef.current;
+    if (!canvas || !recent.length) return;
+    const W = canvas.clientWidth;
+    const pad = TM_PAD;
+    const cw = W - pad.l - pad.r;
+    const x = e.nativeEvent.offsetX;
+    if (x < pad.l || x > W - pad.r) {
+      setTip(null);
+      return;
+    }
+    const n = recent.length;
+    const colW = cw / n;
+    const i = Math.min(n - 1, Math.max(0, Math.floor((x - pad.l) / colW)));
+    const d = recent[i];
+    if (!d) {
+      setTip(null);
+      return;
+    }
+    const net = (d.net_spend_eur != null)
+      ? d.net_spend_eur
+      : ((d.spent_eur || 0) - (d.received_eur || 0));
+    setTip({
+      x,
+      y: e.nativeEvent.offsetY,
+      title: seasonLabel(d.season),
+      lines: [
+        `Spent: ${formatEur(d.spent_eur)}`,
+        `Received: ${formatEur(d.received_eur)}`,
+        `Net: ${formatEur(net)}`,
+      ],
+    });
+  };
+
+  if (!data.length) return null;
+
+  return (
+    <div
+      className={styles.chartWrap}
+      onMouseMove={onMoveBalance}
+      onMouseLeave={() => setTip(null)}
+    >
+      <canvas ref={canvasRef} className={styles.canvas} />
+      {tip && (
+        <div
+          className={styles.chartTooltip}
+          style={{ left: tip.x, top: tip.y }}
+        >
+          <div className={styles.ttTitle}>{tip.title}</div>
+          {tip.lines.map((line, j) => (
+            <div key={j} className={styles.ttLine}>{line}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function TopTransfers({ transfers, direction }) {
