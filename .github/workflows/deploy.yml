@@ -62,6 +62,11 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             cd /opt/liverpool-analytics
+
+            # Pull latest code from git
+            git pull origin main
+
+            # Recreate .env from secrets
             cat > .env << 'ENVEOF'
             GCP_PROJECT=${{ secrets.GCP_PROJECT }}
             REGISTRY=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/liverpool
@@ -72,7 +77,17 @@ jobs:
             VITE_SEASON=${{ secrets.CURRENT_SEASON }}
             AIRFLOW_SECRET=${{ secrets.AIRFLOW_SECRET }}
             ENVEOF
+
+            # Authenticate docker to Artifact Registry
             gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
-            docker compose pull backend frontend
-            docker compose up -d backend frontend nginx airflow
+
+            # Pull new images
+            docker compose pull backend frontend scraper
+
+            # Restart services with new images
+            # Note: airflow is managed separately via docker run (not compose)
+            # to avoid container name conflicts
+            docker compose up -d backend frontend nginx
+
+            # Clean up old images
             docker image prune -f
