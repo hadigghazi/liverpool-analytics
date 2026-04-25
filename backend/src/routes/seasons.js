@@ -20,10 +20,16 @@ router.get('/', async (req, res) => {
     );
 
     // Also include current season even if not in scraped_seasons yet
-    const seen = new Set(rows.map((r) => r.season));
-    if (defaultSeason && !seen.has(defaultSeason)) {
-      rows.unshift({
-        season: defaultSeason,
+    const normalizedDefault = normalizeSeason(defaultSeason);
+    const normalizedRows = rows.map((r) => ({
+      ...r,
+      season: normalizeSeason(r.season),
+    }));
+
+    const seen = new Set(normalizedRows.map((r) => r.season));
+    if (normalizedDefault && !seen.has(normalizedDefault)) {
+      normalizedRows.unshift({
+        season: normalizedDefault,
         matches_count: null,
         players_count: null,
         is_complete: false,
@@ -31,7 +37,7 @@ router.get('/', async (req, res) => {
       });
     }
 
-    const seasons = rows.map((r) => ({
+    const seasons = normalizedRows.map((r) => ({
       season: r.season,
       label: seasonLabel(r.season),
       is_complete: r.is_complete,
@@ -44,6 +50,26 @@ router.get('/', async (req, res) => {
   }
 });
 
+function normalizeSeason(season) {
+  if (season == null) return null;
+  const s = String(season).trim();
+
+  // Already in "2425" form
+  if (/^\d{4}$/.test(s) && !s.startsWith('20')) return s;
+
+  // "2024/25" or "2024-25" -> "2425"
+  const m = s.match(/^(20\d{2})\D+(\d{2})$/);
+  if (m) return `${m[1].slice(2)}${m[2]}`;
+
+  // "2024" -> "2425"
+  if (/^20\d{2}$/.test(s)) {
+    const y = Number(s);
+    return `${String(y % 100).padStart(2, '0')}${String((y + 1) % 100).padStart(2, '0')}`;
+  }
+
+  return s;
+}
+
 function seasonLabel(season) {
   const y1 = `20${season.slice(0, 2)}`;
   const y2 = `20${season.slice(2)}`;
@@ -52,3 +78,4 @@ function seasonLabel(season) {
 
 export default router;
 
+/* old code removed below */
