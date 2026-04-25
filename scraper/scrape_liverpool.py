@@ -7,6 +7,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+os.environ["SOCCERDATA_HEADLESS"] = "true"
+os.environ["UC_DRIVER_PATH"] = "/usr/bin/chromedriver"
+
+# Tell seleniumbase to use system chrome
+import seleniumbase
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 PROJECT = os.environ["GCP_PROJECT"]
@@ -86,7 +92,12 @@ def scrape_and_load(season):
     print(f"[{datetime.now()}] Scraping season {season}...")
     now = datetime.utcnow()
 
-    fbref = sd.FBref(leagues=["ENG-Premier League"], seasons=[season], no_cache=True)
+    fbref = sd.FBref(
+        leagues=["ENG-Premier League"],
+        seasons=[season],
+        no_cache=True,
+        headless=True,
+    )
 
     # --- Matches ---
     schedule = fbref.read_schedule().reset_index()
