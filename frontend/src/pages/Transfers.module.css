@@ -1,0 +1,149 @@
+.page { display: flex; flex-direction: column; gap: 24px; }
+.loading { color: var(--text-muted); text-align: center; padding: 80px; }
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pageTitle {
+  font-family: var(--font-display);
+  font-size: 36px;
+  color: var(--text);
+  letter-spacing: 1px;
+}
+
+.headerStats { display: flex; gap: 32px; }
+.hstat { display: flex; flex-direction: column; align-items: flex-end; }
+.hstatVal { font-family: var(--font-display); font-size: 24px; color: var(--lfc-red); }
+.hstatLabel { font-size: 11px; color: var(--text-muted); }
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 12px;
+}
+
+.chartCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.canvas { width: 100%; height: 220px; display: block; }
+
+.legend { display: flex; gap: 16px; margin-top: 10px; font-size: 11px; color: var(--text-muted); }
+.legend span { display: flex; align-items: center; gap: 5px; }
+.dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+.twoCol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.transferCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.transferCard::-webkit-scrollbar { width: 3px; }
+.transferCard::-webkit-scrollbar-thumb { background: var(--border); }
+
+.transferList { display: flex; flex-direction: column; gap: 8px; }
+
+.transferRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.transferRow:last-child { border-bottom: none; }
+
+.transferRank {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.transferInfo { flex: 1; min-width: 0; }
+.transferPlayer { font-size: 13px; font-weight: 500; color: var(--text); display: block; }
+.transferClub { font-size: 11px; color: var(--text-muted); }
+.transferFee { font-family: var(--font-display); font-size: 18px; color: var(--lfc-red); flex-shrink: 0; }
+
+.seasonPickerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.seasonPickerRow .sectionTitle { margin-bottom: 0; }
+
+.seasonSelect {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  outline: none;
+}
+
+.valueTable { display: flex; flex-direction: column; }
+
+.valueHeader {
+  display: grid;
+  grid-template-columns: 1fr 60px 36px 72px 40px 72px;
+  gap: 8px;
+  padding: 6px 0 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.valueRow {
+  display: grid;
+  grid-template-columns: 1fr 60px 36px 72px 40px 72px;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  font-size: 12px;
+  align-items: center;
+}
+
+.valueRow:last-child { border-bottom: none; }
+.even { background: rgba(255,255,255,0.01); }
+.valueName { color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.valuePos { color: var(--text-muted); font-size: 11px; }
+.valueAmount { color: var(--lfc-gold); font-weight: 600; }
+.efficiency { color: var(--text-muted); }
+.hot { color: #22c55e; font-weight: 700; }
+
+@media (max-width: 900px) {
+  .twoCol { grid-template-columns: 1fr; }
+  .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .headerStats { gap: 20px; }
+  .hstat { align-items: flex-start; }
+}
+
