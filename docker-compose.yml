@@ -40,7 +40,7 @@ services:
     restart: unless-stopped
     command: standalone
     environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
@@ -48,6 +48,9 @@ services:
       _AIRFLOW_WWW_USER_CREATE: "true"
       _AIRFLOW_WWW_USER_USERNAME: admin
       _AIRFLOW_WWW_USER_PASSWORD: admin
+      GCP_PROJECT: ${GCP_PROJECT}
+      REGISTRY: ${REGISTRY}
+      CURRENT_SEASON: ${CURRENT_SEASON}
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
