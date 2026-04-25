@@ -1,9 +1,12 @@
 import { usePlayers, useMatches } from '../hooks/useData.js';
+import HoverTip from '../components/HoverTip/HoverTip.jsx';
 import styles from './Defense.module.css';
 
 function TacklesChart({ players }) {
   const top = players.filter(p => p.tackles > 0).sort((a, b) => b.tackles - a.tackles).slice(0, 10);
-  const max = Math.max(...top.map(p => p.tackles));
+  if (!top.length) return null;
+  const rawMax = Math.max(...top.map(p => p.tackles));
+  const max = rawMax > 0 ? rawMax : 1;
   return (
     <div className={styles.chart}>
       <h2 className={styles.chartTitle}>Tackles won</h2>
@@ -12,10 +15,20 @@ function TacklesChart({ players }) {
         {top.map(p => (
           <div key={p.player} className={styles.barRow}>
             <span className={styles.barName}>{p.player.split(' ').pop()}</span>
-            <div className={styles.barTrack}>
-              <div className={styles.barFill} style={{ width: `${(p.tackles / max) * 100}%` }} />
-              <span className={styles.barVal}>{p.tackles}</span>
-            </div>
+            <HoverTip
+              variant="flex1"
+              title={p.player}
+              lines={[
+                `Tackles: ${p.tackles ?? 0}`,
+                `Interceptions: ${p.interceptions ?? 0}`,
+                `Minutes: ${Math.round(p.minutes || 0)}`,
+              ]}
+            >
+              <div className={styles.barTrack}>
+                <div className={styles.barFill} style={{ width: `${(p.tackles / max) * 100}%` }} />
+                <span className={styles.barVal}>{p.tackles}</span>
+              </div>
+            </HoverTip>
           </div>
         ))}
       </div>
@@ -25,7 +38,9 @@ function TacklesChart({ players }) {
 
 function InterceptionsChart({ players }) {
   const top = players.filter(p => p.interceptions > 0).sort((a, b) => b.interceptions - a.interceptions).slice(0, 10);
-  const max = Math.max(...top.map(p => p.interceptions));
+  if (!top.length) return null;
+  const rawMax = Math.max(...top.map(p => p.interceptions));
+  const max = rawMax > 0 ? rawMax : 1;
   return (
     <div className={styles.chart}>
       <h2 className={styles.chartTitle}>Interceptions</h2>
@@ -34,10 +49,20 @@ function InterceptionsChart({ players }) {
         {top.map(p => (
           <div key={p.player} className={styles.barRow}>
             <span className={styles.barName}>{p.player.split(' ').pop()}</span>
-            <div className={styles.barTrack}>
-              <div className={styles.barFillTeal} style={{ width: `${(p.interceptions / max) * 100}%` }} />
-              <span className={styles.barVal}>{p.interceptions}</span>
-            </div>
+            <HoverTip
+              variant="flex1"
+              title={p.player}
+              lines={[
+                `Interceptions: ${p.interceptions ?? 0}`,
+                `Tackles: ${p.tackles ?? 0}`,
+                `Minutes: ${Math.round(p.minutes || 0)}`,
+              ]}
+            >
+              <div className={styles.barTrack}>
+                <div className={styles.barFillTeal} style={{ width: `${(p.interceptions / max) * 100}%` }} />
+                <span className={styles.barVal}>{p.interceptions}</span>
+              </div>
+            </HoverTip>
           </div>
         ))}
       </div>
@@ -70,16 +95,25 @@ function CleanSheetTimeline({ matches }) {
       </div>
       <div className={styles.timeline}>
         {played.map((m, i) => (
-          <div
+          <HoverTip
             key={i}
-            className={styles.tlBar}
-            title={`GW${m.match_number} vs ${m.opponent}: conceded ${m.opp_goals}`}
-            style={{ height: `${Math.max(((m.opp_goals || 0) / max) * 80, m.opp_goals === 0 ? 3 : 0)}px` }}
+            wrapClassName={styles.timelineTipWrap}
+            title={`GW${m.match_number} · ${m.opponent || '—'}`}
+            lines={[
+              `Conceded: ${m.opp_goals ?? 0}`,
+              `Score: ${m.lfc_goals ?? 0}–${m.opp_goals ?? 0}`,
+              `Result: ${m.result || '—'}`,
+            ]}
           >
             <div
-              className={`${styles.tlFill} ${m.opp_goals === 0 ? styles.clean : m.opp_goals >= 3 ? styles.bad : styles.normal}`}
-            />
-          </div>
+              className={styles.tlBar}
+              style={{ height: `${Math.max(((m.opp_goals || 0) / max) * 80, m.opp_goals === 0 ? 3 : 0)}px` }}
+            >
+              <div
+                className={`${styles.tlFill} ${m.opp_goals === 0 ? styles.clean : m.opp_goals >= 3 ? styles.bad : styles.normal}`}
+              />
+            </div>
+          </HoverTip>
         ))}
       </div>
       <div className={styles.tlLegend}>

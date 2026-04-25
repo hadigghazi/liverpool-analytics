@@ -1,9 +1,12 @@
 import { usePlayers, useMatches } from '../hooks/useData.js';
+import HoverTip from '../components/HoverTip/HoverTip.jsx';
 import styles from './Attack.module.css';
 
 function GoalsBar({ players }) {
   const top = players.filter(p => p.goals > 0).slice(0, 10);
-  const max = Math.max(...top.map(p => p.goals));
+  if (!top.length) return null;
+  const rawMax = Math.max(...top.map(p => p.goals));
+  const max = rawMax > 0 ? rawMax : 1;
 
   return (
     <div className={styles.chart}>
@@ -12,13 +15,23 @@ function GoalsBar({ players }) {
         {top.map(p => (
           <div key={p.player} className={styles.barRow}>
             <span className={styles.barName}>{p.player.split(' ').pop()}</span>
-            <div className={styles.barTrack}>
-              <div
-                className={styles.barFill}
-                style={{ width: `${(p.goals / max) * 100}%` }}
-              />
-              <span className={styles.barVal}>{p.goals}</span>
-            </div>
+            <HoverTip
+              variant="flex1"
+              title={p.player}
+              lines={[
+                `Goals: ${p.goals ?? 0}`,
+                `Assists: ${p.assists ?? 0}`,
+                `Minutes: ${Math.round(p.minutes || 0)}`,
+              ]}
+            >
+              <div className={styles.barTrack}>
+                <div
+                  className={styles.barFill}
+                  style={{ width: `${(p.goals / max) * 100}%` }}
+                />
+                <span className={styles.barVal}>{p.goals}</span>
+              </div>
+            </HoverTip>
             <span className={styles.barSub}>{p.assists}A</span>
           </div>
         ))}
@@ -102,17 +115,26 @@ function HomeAwayGoals({ matches }) {
       </div>
       <div className={styles.goalTimeline}>
         {goalsByGW.map((m, i) => (
-          <div
+          <HoverTip
             key={i}
-            className={styles.gwBar}
-            title={`GW${m.gw} vs ${m.opponent}: ${m.goals}–${m.conceded}`}
-            style={{ height: `${Math.max(m.goals * 16, 4)}px` }}
+            wrapClassName={styles.timelineTipWrap}
+            title={`GW${m.gw} · ${m.opponent || '—'}`}
+            lines={[
+              `Score: ${m.goals}–${m.conceded}`,
+              `Venue: ${m.venue === 'home' ? 'Home' : m.venue === 'away' ? 'Away' : '—'}`,
+              `Result: ${m.result || '—'}`,
+            ]}
           >
             <div
-              className={`${styles.gwFill} ${m.venue === 'home' ? styles.homeBar : styles.awayBar}`}
-              style={{ height: '100%' }}
-            />
-          </div>
+              className={styles.gwBar}
+              style={{ height: `${Math.max(m.goals * 16, 4)}px` }}
+            >
+              <div
+                className={`${styles.gwFill} ${m.venue === 'home' ? styles.homeBar : styles.awayBar}`}
+                style={{ height: '100%' }}
+              />
+            </div>
+          </HoverTip>
         ))}
       </div>
       <div className={styles.barLegend}>
@@ -125,6 +147,9 @@ function HomeAwayGoals({ matches }) {
 
 function OffsideContext({ players }) {
   const top = players.filter(p => p.offsides > 0).sort((a, b) => b.offsides - a.offsides).slice(0, 6);
+  if (!top.length) return null;
+  const rawMax = top[0]?.offsides || 0;
+  const max = rawMax > 0 ? rawMax : 1;
   return (
     <div className={styles.chart}>
       <h2 className={styles.chartTitle}>Offside trap — attacking intent</h2>
@@ -133,10 +158,19 @@ function OffsideContext({ players }) {
         {top.map(p => (
           <div key={p.player} className={styles.barRow}>
             <span className={styles.barName}>{p.player.split(' ').pop()}</span>
-            <div className={styles.barTrack}>
-              <div className={styles.barFillGold} style={{ width: `${(p.offsides / top[0].offsides) * 100}%` }} />
-              <span className={styles.barVal}>{p.offsides}</span>
-            </div>
+            <HoverTip
+              variant="flex1"
+              title={p.player}
+              lines={[
+                `Offsides: ${p.offsides ?? 0}`,
+                `Minutes: ${Math.round(p.minutes || 0)}`,
+              ]}
+            >
+              <div className={styles.barTrack}>
+                <div className={styles.barFillGold} style={{ width: `${(p.offsides / max) * 100}%` }} />
+                <span className={styles.barVal}>{p.offsides}</span>
+              </div>
+            </HoverTip>
           </div>
         ))}
       </div>
