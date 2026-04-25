@@ -106,24 +106,37 @@ def scrape_and_load(season):
         (schedule["home_team"] == "Liverpool") | (schedule["away_team"] == "Liverpool")
     ].copy()
 
+    # DEBUG - print columns and first row
+    print("COLUMNS:", lfc_matches.columns.tolist())
+    if len(lfc_matches) > 0:
+        print("SAMPLE ROW:", lfc_matches.iloc[0].to_dict())
+    else:
+        print("SAMPLE ROW: <no Liverpool matches found>")
+
     match_rows = []
     for _, r in lfc_matches.iterrows():
-        gid = str(r.get("game_id", f"{r['home_team']}-{r.get('date','')}"))
-        d = r.get("date")
+        # Parse score string like '0–2' or '2–1' (en dash)
+        score = r.get("score")
+        home_goals = None
+        away_goals = None
+        if score and isinstance(score, str) and "–" in score:
+            parts = score.split("–")
+            try:
+                home_goals = int(parts[0].strip())
+                away_goals = int(parts[1].strip())
+            except Exception:
+                pass
+
         match_rows.append(
             {
-                "game_id": gid,
+                "game_id": str(r.get("game_id", "")),
                 "season": season,
-                "date": str(d)[:10] if d else None,
-                "gameweek": int(r["round"]) if pd.notna(r.get("round")) else None,
+                "date": str(r.get("date"))[:10] if r.get("date") else None,
+                "gameweek": int(r["week"]) if pd.notna(r.get("week")) else None,
                 "home_team": r.get("home_team"),
                 "away_team": r.get("away_team"),
-                "home_goals": int(r["home_goals"])
-                if pd.notna(r.get("home_goals"))
-                else None,
-                "away_goals": int(r["away_goals"])
-                if pd.notna(r.get("away_goals"))
-                else None,
+                "home_goals": home_goals,
+                "away_goals": away_goals,
                 "venue": r.get("venue"),
                 "scraped_at": now.isoformat(),
             }
@@ -140,66 +153,88 @@ def scrape_and_load(season):
         print(f"Loaded {len(match_rows)} matches")
 
     # --- Player stats ---
-    stat_map = {
-        "standard": ["minutes", "goals", "assists", "xg", "xag"],
-        "shooting": ["shots", "shots_on_tgt", "xg"],
-        "playing_time": ["minutes"],
-        "misc": ["tackles", "interceptions", "pressures"],
-        "keeper": [],
-    }
-
+    stat_types = ["standard", "shooting", "playing_time", "misc"]
     player_rows = []
-    for stat_type, _ in stat_map.items():
-        try:
-            df = fbref.read_player_season_stats(stat_type=stat_type).reset_index()
-            lfc = df[df["team"] == "Liverpool"].copy()
-            col = df.columns.tolist()
 
-            def gc(names):
-                for n in names:
-                    if n in col:
-                        return n
-                return None
+    for stat_type in stat_types:
+        try:
+            df = fbref.read_player_season_stats(stat_type=stat_type)
+            df = df.reset_index()
+
+            # Filter Liverpool only using MultiIndex tuple key
+            lfc = df[df[("team", "")] == "Liverpool"].copy()
 
             for _, r in lfc.iterrows():
+                player = r.get(("player", ""), "")
+                if not isinstance(player, str) or not player.strip():
+                    continue
+
+                def g(*keys):
+                    for k in keys:
+                        val = r.get(k)
+                        if val is not None and str(val) not in ("nan", "None", ""):
+                            return str(val)
+                    return ""
+
                 player_rows.append(
                     {
                         "season": season,
-                        "player": str(r.get("player", "")),
+                        "player": str(player).strip(),
                         "team": "Liverpool",
                         "stat_type": stat_type,
-                        "minutes": clean_float(r.get(gc(["minutes", "Min"]))),
-                        "goals": clean_float(r.get(gc(["goals", "Gls"]))),
-                        "assists": clean_float(r.get(gc(["assists", "Ast"]))),
-                        "xg": clean_float(r.get(gc(["xg", "xG"]))),
-                        "xag": clean_float(r.get(gc(["xag", "xAG"]))),
-                        "shots": clean_float(r.get(gc(["shots", "Sh"]))),
-                        "shots_on_tgt": clean_float(
-                            r.get(gc(["shots_on_target", "SoT"]))
-                        ),
-                        "passes_cmp": clean_float(r.get(gc(["passes_completed", "Cmp"]))),
-                        "passes_att": clean_float(r.get(gc(["passes", "Att"]))),
-                        "key_passes": clean_float(r.get(gc(["passes_key", "KP"]))),
-                        "prog_passes": clean_float(
-                            r.get(gc(["passes_progressive", "PrgP"]))
-                        ),
-                        "tackles": clean_float(r.get(gc(["tackles", "Tkl"]))),
-                        "interceptions": clean_float(
-                            r.get(gc(["interceptions", "Int"]))
-                        ),
-                        "pressures": clean_float(r.get(gc(["pressures", "Press"]))),
-                        "touches": clean_float(r.get(gc(["touches", "Touches"]))),
-                        "prog_carries": clean_float(
-                            r.get(gc(["carries_progressive", "PrgC"]))
-                        ),
+                        "minutes": g(("Playing Time", "Min"), ("Min", "")),
+                        "goals": g(("Performance", "Gls"), ("Gls", "")),
+                        "assists": g(("Performance", "Ast"), ("Ast", "")),
+                        "xg": g(("Expected", "xG"), ("xG", "")),
+                        "xag": g(("Expected", "xAG"), ("xAG", "")),
+                        "shots": g(("Standard", "Sh"), ("Sh", "")),
+                        "shots_on_tgt": g(("Standard", "SoT"), ("SoT", "")),
+                        "passes_cmp": g(("Total", "Cmp"), ("Cmp", "")),
+                        "passes_att": g(("Total", "Att"), ("Att", "")),
+                        "key_passes": g(("KP", ""), ("KP",)),
+                        "prog_passes": g(("PrgP", ""), ("PrgP",)),
+                        "tackles": g(("Tackles", "Tkl"), ("Tkl", "")),
+                        "interceptions": g(("Int", ""), ("Int",)),
+                        "pressures": g(("Pressures", "Press"), ("Press", "")),
+                        "touches": g(("Touches", "Touches"), ("Touches", "")),
+                        "prog_carries": g(("Carries", "PrgC"), ("PrgC", "")),
                         "scraped_at": now.isoformat(),
                     }
                 )
         except Exception as e:
             print(f"  [{stat_type}] error: {e}")
 
+    print(f"Total player rows: {len(player_rows)}")
+    if player_rows:
+        sample = {
+            k: v
+            for k, v in player_rows[0].items()
+            if k in ["player", "goals", "assists", "minutes", "xg"]
+        }
+        print(f"Sample: {sample}")
+
     if player_rows:
         df = pd.DataFrame(player_rows)
+        for c in [
+            "minutes",
+            "goals",
+            "assists",
+            "xg",
+            "xag",
+            "shots",
+            "shots_on_tgt",
+            "passes_cmp",
+            "passes_att",
+            "key_passes",
+            "prog_passes",
+            "tackles",
+            "interceptions",
+            "pressures",
+            "touches",
+            "prog_carries",
+        ]:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors="coerce")
         job_config = LoadJobConfig(write_disposition=WriteDisposition.WRITE_TRUNCATE)
         job = client.load_table_from_dataframe(
             df, bq_table("raw_player_stats"), job_config=job_config
