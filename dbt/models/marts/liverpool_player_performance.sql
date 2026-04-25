@@ -27,7 +27,7 @@ LEFT JOIN {{ ref('stg_player_stats') }} sh
 LEFT JOIN {{ ref('stg_player_stats') }} p
     ON s.player = p.player AND s.season = p.season AND p.stat_type = 'passing'
 LEFT JOIN {{ ref('stg_player_stats') }} d
-    ON s.player = d.player AND s.season = d.season AND d.stat_type = 'defense'
+    ON s.player = d.player AND s.season = d.season AND d.stat_type = 'misc'
 LEFT JOIN {{ ref('stg_player_stats') }} po
     ON s.player = po.player AND s.season = po.season AND po.stat_type = 'possession'
 WHERE s.stat_type = 'standard'
