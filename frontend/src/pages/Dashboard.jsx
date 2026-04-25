@@ -156,9 +156,9 @@ function MatchRow({ m }) {
   );
 }
 
-export default function Dashboard() {
-  const { data: matches, loading: mLoading } = useMatches();
-  const { data: summary, loading: sLoading } = useSummary();
+export default function Dashboard({ season }) {
+  const { data: matches, loading: mLoading } = useMatches(season);
+  const { data: summary, loading: sLoading } = useSummary(season);
 
   if (mLoading || sLoading) return <div className={styles.loading}>Loading season data...</div>;
 

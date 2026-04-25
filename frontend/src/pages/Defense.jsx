@@ -122,9 +122,9 @@ function DisciplinaryTable({ players }) {
   );
 }
 
-export default function Defense() {
-  const { data: players, loading: pLoading } = usePlayers();
-  const { data: matches, loading: mLoading } = useMatches();
+export default function Defense({ season }) {
+  const { data: players, loading: pLoading } = usePlayers(season);
+  const { data: matches, loading: mLoading } = useMatches(season);
 
   if (pLoading || mLoading) return <div className={styles.loading}>Loading defense data...</div>;
 

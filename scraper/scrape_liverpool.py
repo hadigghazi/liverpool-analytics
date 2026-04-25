@@ -1,14 +1,13 @@
+# scraper/scrape_liverpool.py
 import soccerdata as sd
 import pandas as pd
 from bs4 import BeautifulSoup, Comment
 from google.cloud import bigquery
 from google.cloud.bigquery import LoadJobConfig, WriteDisposition
-from datetime import datetime
+from datetime import datetime, date
 import os, time, random, math
 from pathlib import Path
-import re
 from io import StringIO
-
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -29,6 +28,36 @@ def to_float(val):
         return None if math.isnan(f) else f
     except:
         return None
+
+def get_current_season():
+    today = date.today()
+    year = today.year
+    month = today.month
+    if month >= 8:
+        return f"{str(year)[2:]}{str(year+1)[2:]}"
+    else:
+        return f"{str(year-1)[2:]}{str(year)[2:]}"
+
+def get_all_seasons(from_year=2000):
+    seasons = []
+    current = get_current_season()
+    year = from_year
+    while True:
+        y1 = str(year)[2:].zfill(2)
+        y2 = str(year + 1)[2:].zfill(2)
+        code = f"{y1}{y2}"
+        seasons.append(code)
+        if code == current:
+            break
+        year += 1
+    return seasons
+
+def season_to_year(season):
+    y1 = int("20" + season[:2]) if int(season[:2]) >= 0 else int("19" + season[:2])
+    # Handle 00, 01 etc
+    prefix1 = "20" if int(season[:2]) <= 30 else "19"
+    prefix2 = "20" if int(season[2:]) <= 30 else "19"
+    return f"{prefix1}{season[:2]}-{prefix2}{season[2:]}"
 
 def ensure_tables():
     client.query(f"""
@@ -61,81 +90,96 @@ def ensure_tables():
             scraped_at TIMESTAMP
         )
     """).result()
+
+    client.query(f"""
+        CREATE TABLE IF NOT EXISTS `{bq_table('scraped_seasons')}` (
+            season STRING,
+            scraped_at TIMESTAMP,
+            matches_count INT64,
+            players_count INT64,
+            is_complete BOOL
+        )
+    """).result()
+
     print("Tables ready.")
 
-def fetch_with_soccerdata_driver(driver, url, wait=20):
-    print(f"  GET {url}")
-    time.sleep(random.uniform(8, 15))  # longer delay between pages
+def get_scraped_seasons():
     try:
-        driver.get(url)
+        rows = client.query(f"""
+            SELECT season FROM `{bq_table('scraped_seasons')}`
+            WHERE is_complete = TRUE
+        """).result()
+        return {row.season for row in rows}
+    except:
+        return set()
+
+def mark_season_scraped(season, matches_count, players_count, is_complete):
+    client.query(f"""
+        DELETE FROM `{bq_table('scraped_seasons')}` WHERE season = '{season}'
+    """).result()
+    client.insert_rows_json(bq_table('scraped_seasons'), [{
+        "season": season,
+        "scraped_at": datetime.utcnow().isoformat(),
+        "matches_count": matches_count,
+        "players_count": players_count,
+        "is_complete": is_complete,
+    }])
+
+def fetch_with_driver(driver, url, wait=15):
+    print(f"    GET {url}")
+    time.sleep(random.uniform(6, 12))
+    try:
+        driver.execute_script(f"window.location.href = '{url}';")
         time.sleep(wait)
     except Exception as e:
-        print(f"  driver error: {e}")
-        return ""
-
-    try:
-        print(f"     current_url: {driver.current_url}")
-        print(f"     title: {driver.title}")
-    except Exception:
-        pass
+        try:
+            driver.get(url)
+            time.sleep(wait)
+        except Exception as e2:
+            print(f"    fetch failed: {e2}")
+            return ""
     return driver.page_source
 
-
-def parse_table_from_html(html, table_id):
+def parse_table(html, table_id):
+    if not html:
+        return pd.DataFrame()
     soup = BeautifulSoup(html, "lxml")
 
-    def _read_table(table_html, matchlogs=False):
-        if matchlogs:
-            return pd.read_html(StringIO(table_html), header=0)[0]
-        return pd.read_html(StringIO(table_html), header=[0, 1])[0]
-
-    # FBref hides tables inside HTML comments — must parse comments
-    comments = soup.find_all(string=lambda text: isinstance(text, Comment))
-    for comment in comments:
-        if table_id in comment:
-            comment_soup = BeautifulSoup(comment, "lxml")
-            table = comment_soup.find("table", {"id": table_id})
+    # Check comments first (FBref hides some tables in HTML comments)
+    comments = soup.find_all(string=lambda t: isinstance(t, Comment))
+    for c in comments:
+        if table_id in c:
+            cs = BeautifulSoup(c, "lxml")
+            table = cs.find("table", {"id": table_id})
             if table:
-                try:
-                    df = _read_table(str(table), matchlogs=(table_id == "matchlogs_for"))
-                    if isinstance(df.columns, pd.MultiIndex):
-                        df.columns = [
-                            str(b)
-                            if str(a).startswith("Unnamed")
-                            else (f"{a}_{b}" if str(b) != "" else str(a))
-                            for a, b in df.columns
-                        ]
-                    if "Player" in df.columns:
-                        df = df[df["Player"] != "Player"]
-                        df = df[df["Player"].notna()]
-                    return df
-                except Exception as e:
-                    print(f"    comment parse error: {e}")
+                return _parse_df(table, table_id)
 
-    # Try direct table (not in comment)
+    # Direct table
     table = soup.find("table", {"id": table_id})
     if table:
-        try:
-            df = _read_table(str(table), matchlogs=(table_id == "matchlogs_for"))
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = [
-                    str(b)
-                    if str(a).startswith("Unnamed")
-                    else (f"{a}_{b}" if str(b) != "" else str(a))
-                    for a, b in df.columns
-                ]
-            if "Player" in df.columns:
-                df = df[df["Player"] != "Player"]
-                df = df[df["Player"].notna()]
-            return df
-        except Exception as e:
-            print(f"    direct parse error: {e}")
+        return _parse_df(table, table_id)
 
     return pd.DataFrame()
 
-def scrape_all(season):
-    year = f"20{season[:2]}-20{season[2:]}"
+def _parse_df(table, table_id):
+    try:
+        is_matches = table_id == "matchlogs_for"
+        df = pd.read_html(StringIO(str(table)), header=0 if is_matches else [0, 1])[0]
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [
+                str(b) if str(a).startswith("Unnamed") else (f"{a}_{b}" if str(b) != "" else str(a))
+                for a, b in df.columns
+            ]
+        if "Player" in df.columns:
+            df = df[df["Player"] != "Player"]
+            df = df[df["Player"].notna()]
+        return df
+    except Exception as e:
+        print(f"    parse error: {e}")
+        return pd.DataFrame()
 
+def scrape_season(driver, season):
+    year = season_to_year(season)
     BIG5 = f"{BASE}/en/comps/Big5/{year}"
     SQUAD = f"{BASE}/en/squads/{LIVERPOOL_SQUAD_ID}/{year}"
 
@@ -159,47 +203,25 @@ def scrape_all(season):
         "matches":    "matchlogs_for",
     }
 
-    # Initialize soccerdata (this passes Cloudflare) and reuse its undetected driver
-    fbref_sd = sd.FBref(leagues=["ENG-Premier League"], seasons=[season])
-    driver = fbref_sd._driver  # undetected Chrome instance
-    results = {}
-
+    data = {}
     for name, url in pages.items():
-        html = fetch_with_soccerdata_driver(driver, url, wait=20)
-        if not html:
-            print(f"  [SKIP] {name}: empty response")
-            continue
-
+        html = fetch_with_driver(driver, url)
         tid = table_ids[name]
-        df = parse_table_from_html(html, tid)
+        df = parse_table(html, tid)
 
         if not df.empty:
-            # Filter Liverpool players from Big5 data
-            if name != "matches":
-                for squad_col in ["Squad", "squad", "team", "Team"]:
-                    if squad_col in df.columns:
-                        df = df[df[squad_col] == "Liverpool"].copy()
-                        break
-            print(f"  [OK] {name}: {len(df)} rows, cols: {df.columns.tolist()[:12]}")
-            results[name] = df
+            if name != "matches" and "Squad" in df.columns:
+                df = df[df["Squad"] == "Liverpool"].copy()
+            elif name != "matches" and "Squad" not in df.columns:
+                # Old seasons may not have Squad column on Big5
+                # Fall back to squad page
+                pass
+            print(f"    ✅ {name}: {len(df)} rows")
+            data[name] = df
         else:
-            soup_dbg = BeautifulSoup(html, "lxml")
-            direct_ids = [
-                t.get("id", "") for t in soup_dbg.find_all("table") if t.get("id")
-            ]
-            comments = soup_dbg.find_all(string=lambda t: isinstance(t, Comment))
-            comment_ids = []
-            for c in comments:
-                if "table" in c and "id=" in c:
-                    cs = BeautifulSoup(c, "lxml")
-                    comment_ids.extend(
-                        [t.get("id", "") for t in cs.find_all("table") if t.get("id")]
-                    )
-            print(f"  [ERR] {name}: not found")
-            print(f"     direct: {direct_ids[:10]}")
-            print(f"     comments: {comment_ids[:10]}")
+            print(f"    ❌ {name}: not found")
 
-    return results
+    return data
 
 def build_match_rows(df, season):
     rows = []
@@ -212,20 +234,16 @@ def build_match_rows(df, season):
         if not date_str or date_str == "nan":
             continue
 
-        # Matches df has GF/GA directly, and Venue, Result
         venue = str(r.get("Venue", ""))
         gf = to_float(r.get("GF"))
         ga = to_float(r.get("GA"))
-        home_goals = (
-            int(gf)
-            if gf is not None and venue.lower() == "home"
-            else (int(ga) if ga is not None else None)
-        )
-        away_goals = (
-            int(ga)
-            if ga is not None and venue.lower() == "home"
-            else (int(gf) if gf is not None else None)
-        )
+
+        if venue.lower() == "home":
+            home_goals = int(gf) if gf is not None else None
+            away_goals = int(ga) if ga is not None else None
+        else:
+            home_goals = int(ga) if ga is not None else None
+            away_goals = int(gf) if gf is not None else None
 
         opponent = str(r.get("Opponent", ""))
         round_val = str(r.get("Round", ""))
@@ -233,7 +251,7 @@ def build_match_rows(df, season):
         if "Matchweek" in round_val:
             try:
                 gameweek = int(round_val.replace("Matchweek", "").strip())
-            except Exception:
+            except:
                 pass
 
         rows.append({
@@ -252,12 +270,11 @@ def build_match_rows(df, season):
 
 def build_player_rows(data, season):
     now = datetime.utcnow().isoformat()
-    standard = data.get("standard", pd.DataFrame())
-    shooting = data.get("shooting", pd.DataFrame())
-    misc = data.get("misc", pd.DataFrame())
+    standard   = data.get("standard", pd.DataFrame())
+    shooting   = data.get("shooting", pd.DataFrame())
+    misc       = data.get("misc", pd.DataFrame())
 
     if standard.empty:
-        print("No standard data")
         return []
 
     def from_df(df, player, *cols):
@@ -287,95 +304,168 @@ def build_player_rows(data, season):
                         return v
             return None
 
-        rows.append(
-            {
-                "season": season,
-                "player": player,
-                "team": "Liverpool",
-                "stat_type": "combined",
-                # Standard stats
-                "minutes": s("Playing Time_Min"),
-                "goals": s("Performance_Gls"),
-                "assists": s("Performance_Ast"),
-                "yellow_cards": s("Performance_CrdY"),
-                "red_cards": s("Performance_CrdR"),
-                # xG — not available free tier, leave null
-                "xg": None,
-                "xag": None,
-                "npxg": None,
-                # Shooting — shots available
-                "shots": from_df(shooting, player, "Standard_Sh"),
-                "shots_on_tgt": from_df(shooting, player, "Standard_SoT"),
-                "shot_on_tgt_pct": from_df(shooting, player, "Standard_SoT%"),
-                # Passing — NaN from Big5 free tier
-                "passes_cmp": None,
-                "passes_att": None,
-                "passes_cmp_pct": None,
-                "key_passes": None,
-                "passes_into_final_third": None,
-                "passes_into_pen_area": None,
-                "prog_passes": None,
-                # Defense — from misc (has real data)
-                "tackles": from_df(misc, player, "Performance_TklW"),
-                "tackles_won": from_df(misc, player, "Performance_TklW"),
-                "interceptions": from_df(misc, player, "Performance_Int"),
-                "blocks": None,
-                "clearances": None,
-                "pressures": None,
-                "pressure_successes": None,
-                # Possession — NaN from Big5 free tier
-                "touches": None,
-                "touches_att_pen": None,
-                "prog_carries": None,
-                "carries_into_final_third": None,
-                "carries_into_pen_area": None,
-                "take_ons_att": None,
-                "take_ons_won": None,
-                "prog_passes_received": None,
-                # Misc — real data
-                "fouls": from_df(misc, player, "Performance_Fls"),
-                "fouled": from_df(misc, player, "Performance_Fld"),
-                "offsides": from_df(misc, player, "Performance_Off"),
-                "scraped_at": now,
-            }
-        )
+        rows.append({
+            "season":      season,
+            "player":      player,
+            "team":        "Liverpool",
+            "stat_type":   "combined",
+            "minutes":     s("Playing Time_Min"),
+            "goals":       s("Performance_Gls"),
+            "assists":     s("Performance_Ast"),
+            "yellow_cards": s("Performance_CrdY"),
+            "red_cards":   s("Performance_CrdR"),
+            "xg":          None,
+            "xag":         None,
+            "npxg":        None,
+            "shots":       from_df(shooting, player, "Standard_Sh"),
+            "shots_on_tgt": from_df(shooting, player, "Standard_SoT"),
+            "shot_on_tgt_pct": from_df(shooting, player, "Standard_SoT%"),
+            "passes_cmp":  None,
+            "passes_att":  None,
+            "passes_cmp_pct": None,
+            "key_passes":  None,
+            "passes_into_final_third": None,
+            "passes_into_pen_area": None,
+            "prog_passes": None,
+            "tackles":     from_df(misc, player, "Performance_TklW"),
+            "tackles_won": from_df(misc, player, "Performance_TklW"),
+            "interceptions": from_df(misc, player, "Performance_Int"),
+            "blocks":      None,
+            "clearances":  None,
+            "pressures":   None,
+            "pressure_successes": None,
+            "touches":     None,
+            "touches_att_pen": None,
+            "prog_carries": None,
+            "carries_into_final_third": None,
+            "carries_into_pen_area": None,
+            "take_ons_att": None,
+            "take_ons_won": None,
+            "prog_passes_received": None,
+            "fouls":       from_df(misc, player, "Performance_Fls"),
+            "fouled":      from_df(misc, player, "Performance_Fld"),
+            "offsides":    from_df(misc, player, "Performance_Off"),
+            "scraped_at":  now,
+        })
     return rows
 
-def run(season="2425"):
-    print(f"[{datetime.utcnow()}] Starting Liverpool scrape for season {season}...")
-    data = scrape_all(season)
+def load_to_bq(match_rows, player_rows, season):
+    if match_rows:
+        df = pd.DataFrame(match_rows)
+        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
+        df["gameweek"] = pd.to_numeric(df["gameweek"], errors="coerce")
+        df["home_goals"] = pd.to_numeric(df["home_goals"], errors="coerce")
+        df["away_goals"] = pd.to_numeric(df["away_goals"], errors="coerce")
 
-    if "matches" in data:
-        match_rows = build_match_rows(data["matches"], season)
-        if match_rows:
-            df = pd.DataFrame(match_rows)
-            df["date"] = pd.to_datetime(df["date"]).dt.date
-            df["gameweek"] = pd.to_numeric(df["gameweek"], errors="coerce")
-            df["home_goals"] = pd.to_numeric(df["home_goals"], errors="coerce")
-            df["away_goals"] = pd.to_numeric(df["away_goals"], errors="coerce")
-            client.load_table_from_dataframe(
-                df, bq_table("raw_matches"),
-                job_config=LoadJobConfig(write_disposition=WriteDisposition.WRITE_TRUNCATE)
-            ).result()
-            print(f"Loaded {len(match_rows)} matches")
+        # Delete existing season data first
+        client.query(f"""
+            DELETE FROM `{bq_table('raw_matches')}` WHERE season = '{season}'
+        """).result()
+        time.sleep(2)  # wait for streaming buffer
 
-    player_rows = build_player_rows(data, season)
+        client.load_table_from_dataframe(
+            df, bq_table("raw_matches"),
+            job_config=LoadJobConfig(write_disposition=WriteDisposition.WRITE_APPEND)
+        ).result()
+        print(f"    Loaded {len(match_rows)} matches")
+
     if player_rows:
         df = pd.DataFrame(player_rows)
         numeric_cols = [c for c in df.columns
                         if c not in ["season", "player", "team", "stat_type", "scraped_at"]]
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        client.query(f"""
+            DELETE FROM `{bq_table('raw_player_stats')}` WHERE season = '{season}'
+        """).result()
+        time.sleep(2)
+
         client.load_table_from_dataframe(
             df, bq_table("raw_player_stats"),
-            job_config=LoadJobConfig(write_disposition=WriteDisposition.WRITE_TRUNCATE)
+            job_config=LoadJobConfig(write_disposition=WriteDisposition.WRITE_APPEND)
         ).result()
-        print(f"Loaded {len(player_rows)} player rows")
+        print(f"    Loaded {len(player_rows)} player rows")
 
-    print(f"[{datetime.utcnow()}] Done.")
+def run(seasons=None, force=False):
+    print(f"[{datetime.utcnow()}] Starting multi-season Liverpool scrape...")
+    ensure_tables()
+
+    if seasons is None:
+        seasons = get_all_seasons(from_year=2000)
+
+    current = get_current_season()
+    already_scraped = get_scraped_seasons()
+
+    print(f"Current season: {current}")
+    print(f"Seasons to scrape: {seasons}")
+    print(f"Already complete: {already_scraped}")
+
+    # Initialize soccerdata driver once — reuse across all seasons
+    print("\nInitializing browser...")
+    fbref_sd = sd.FBref(leagues=["ENG-Premier League"], seasons=[current])
+    driver = fbref_sd._driver
+    print("Browser ready.\n")
+
+    for season in seasons:
+        is_current = season == current
+        is_complete_season = not is_current
+
+        # Skip completed historical seasons unless forced
+        if is_complete_season and season in already_scraped and not force:
+            print(f"[{season}] Already scraped, skipping.")
+            continue
+
+        print(f"\n{'='*50}")
+        print(f"[{season}] Scraping {season_to_year(season)}...")
+        print(f"{'='*50}")
+
+        try:
+            data = scrape_season(driver, season)
+
+            match_rows = []
+            if "matches" in data and not data["matches"].empty:
+                match_rows = build_match_rows(data["matches"], season)
+                print(f"  Built {len(match_rows)} PL match rows")
+
+            player_rows = build_player_rows(data, season)
+            print(f"  Built {len(player_rows)} player rows")
+
+            if match_rows or player_rows:
+                load_to_bq(match_rows, player_rows, season)
+                mark_season_scraped(season, len(match_rows), len(player_rows), is_complete_season)
+                print(f"  ✅ Season {season} done")
+            else:
+                print(f"  ⚠️  No data found for {season} — may not exist on FBref")
+
+            # Longer pause between seasons to be respectful
+            if season != seasons[-1]:
+                delay = random.uniform(20, 35)
+                print(f"  Waiting {delay:.0f}s before next season...")
+                time.sleep(delay)
+
+        except Exception as e:
+            print(f"  ❌ Error scraping {season}: {e}")
+            import traceback
+            traceback.print_exc()
+            # Continue to next season
+            time.sleep(30)
+
+    print(f"\n[{datetime.utcnow()}] All done.")
 
 if __name__ == "__main__":
     import sys
-    ensure_tables()
-    season = sys.argv[1] if len(sys.argv) > 1 else "2425"
-    run(season)
+    args = sys.argv[1:]
+
+    if args and args[0] == "--current":
+        # Only scrape current season (for weekly Task Scheduler)
+        run(seasons=[get_current_season()], force=True)
+    elif args and args[0] == "--force":
+        # Rescrape everything
+        run(force=True)
+    elif args:
+        # Specific seasons e.g. python scrape_liverpool.py 2425 2526
+        run(seasons=args, force=True)
+    else:
+        # Default: scrape all missing seasons
+        run()
