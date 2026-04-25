@@ -4,7 +4,11 @@ on:
     branches: [main]
 
 env:
-  REGISTRY: europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/liverpool
+  REGISTRY: europe-west1-docker.pkg.dev/liverpool-analytics/liverpool
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   build:
@@ -14,7 +18,8 @@ jobs:
 
       - uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: projects/368856641338/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-actions-sa@liverpool-analytics.iam.gserviceaccount.com
 
       - run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
 
@@ -26,9 +31,11 @@ jobs:
 
       - name: Build & push frontend
         run: |
-          S='${{ secrets.CURRENT_SEASON }}'
-          [ -n "$S" ] || S=2425
-          docker build --build-arg "VITE_SEASON=$S" -t $REGISTRY/frontend:$GITHUB_SHA -t $REGISTRY/frontend:latest ./frontend
+          docker build \
+            --build-arg VITE_SEASON=${{ secrets.CURRENT_SEASON || '2526' }} \
+            -t $REGISTRY/frontend:$GITHUB_SHA \
+            -t $REGISTRY/frontend:latest \
+            ./frontend
           docker push $REGISTRY/frontend:$GITHUB_SHA
           docker push $REGISTRY/frontend:latest
 
@@ -55,15 +62,17 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             cd /opt/liverpool-analytics
-            echo "REGISTRY=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/liverpool" > .env
-            echo "GCP_PROJECT=${{ secrets.GCP_PROJECT }}" >> .env
-            echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
-            echo "DOMAIN=${{ secrets.DOMAIN }}" >> .env
-            echo "AIRFLOW_SECRET=${{ secrets.AIRFLOW_SECRET }}" >> .env
-            SEAS='${{ secrets.CURRENT_SEASON }}'
-            if [ -z "$SEAS" ]; then SEAS=2425; fi
-            echo "CURRENT_SEASON=$SEAS" >> .env
+            cat > .env << 'ENVEOF'
+            GCP_PROJECT=${{ secrets.GCP_PROJECT }}
+            REGISTRY=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/liverpool
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            DOMAIN=${{ secrets.DOMAIN }}
+            FRONTEND_URL=https://${{ secrets.DOMAIN }}
+            CURRENT_SEASON=${{ secrets.CURRENT_SEASON }}
+            VITE_SEASON=${{ secrets.CURRENT_SEASON }}
+            AIRFLOW_SECRET=${{ secrets.AIRFLOW_SECRET }}
+            ENVEOF
             gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
-            docker compose pull backend frontend scraper
+            docker compose pull backend frontend
             docker compose up -d backend frontend nginx airflow
             docker image prune -f
