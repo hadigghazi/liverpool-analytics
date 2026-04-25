@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import { query } from '../db/bigquery.js';
 
@@ -36,6 +36,34 @@ function runTmProfileScrape(playerId, playerSlug, playerName) {
     return false;
   }
   return true;
+}
+
+function kickOffTmProfileScrape(playerId, playerSlug, playerName) {
+  try {
+    const script =
+      process.env.TM_SCRAPER_SCRIPT ||
+      path.join(process.cwd(), 'transfermarkt', 'scrape_tm.py');
+    const py = process.env.TM_PYTHON_BIN || 'python3';
+    const args = [
+      '-u',
+      script,
+      '--cache-profile',
+      String(playerId),
+      String(playerSlug),
+      String(playerName || ''),
+    ];
+
+    const child = spawn(py, args, {
+      env: { ...process.env },
+      stdio: 'ignore',
+      detached: true,
+    });
+    child.unref();
+    return true;
+  } catch (e) {
+    console.error('[tm profile scrape kickoff]', e?.message || e);
+    return false;
+  }
 }
 
 // GET /api/player-profile/:playerName?season=2425&refresh=1
@@ -96,23 +124,28 @@ router.get('/:playerName', async (req, res) => {
       cached = cachedRows[0] || null;
     }
 
-    const shouldRefresh =
-      refresh === '1' || refresh === 'true' || (!cached && pid && slug);
+    const refreshRequested = refresh === '1' || refresh === 'true';
 
-    if (shouldRefresh && pid && slug) {
+    // Important: don't block the API response on a slow TM scrape.
+    // If cache is missing, we return squad-level info immediately and
+    // optionally kickoff a background scrape for next time.
+    const canScrape = Boolean(pid && slug);
+    const cacheHit = Boolean(cached);
+
+    if (refreshRequested && canScrape) {
       runTmProfileScrape(pid, slug, tm.player || playerName);
-      if (pid) {
-        const cachedRows2 = await query(
-          `
-          SELECT *
-          FROM \`${process.env.GCP_PROJECT}.liverpool_analytics.tm_player_profiles\`
-          WHERE player_id = @pid
-          LIMIT 1
-        `,
-          { pid }
-        );
-        cached = cachedRows2[0] || null;
-      }
+      const cachedRows2 = await query(
+        `
+        SELECT *
+        FROM \`${process.env.GCP_PROJECT}.liverpool_analytics.tm_player_profiles\`
+        WHERE player_id = @pid
+        LIMIT 1
+      `,
+        { pid }
+      );
+      cached = cachedRows2[0] || null;
+    } else if (!cacheHit && canScrape) {
+      kickOffTmProfileScrape(pid, slug, tm.player || playerName);
     }
 
     let mvHistory = [];
@@ -175,6 +208,7 @@ router.get('/:playerName', async (req, res) => {
       marketValues: mvRows,
       transfers: transferRows,
       tmProfileExtras: { mvHistory },
+      tmCache: { hit: Boolean(cached), player_id: pid || null },
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

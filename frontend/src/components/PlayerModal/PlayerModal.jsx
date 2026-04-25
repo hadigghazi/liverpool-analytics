@@ -52,11 +52,13 @@ export default function PlayerModal({ playerName, season, onClose }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [imgFailed, setImgFailed] = useState(false);
 
   useEffect(() => {
     if (!playerName) return;
     setLoading(true);
     setData(null);
+    setImgFailed(false);
     fetch(`/api/player-profile/${encodeURIComponent(playerName)}?season=${encodeURIComponent(season || '')}`)
       .then(async r => {
         const body = await r.json().catch(() => ({}));
@@ -90,12 +92,12 @@ export default function PlayerModal({ playerName, season, onClose }) {
           <>
             <div className={styles.header}>
               <div className={styles.photoWrap}>
-                {data.profile?.photo_url ? (
+                {data.profile?.photo_url && !imgFailed ? (
                   <img
                     src={data.profile.photo_url}
                     alt={playerName}
                     className={styles.photo}
-                    onError={e => { e.target.style.display = 'none'; }}
+                    onError={() => setImgFailed(true)}
                   />
                 ) : (
                   <div className={styles.photoPlaceholder}>
