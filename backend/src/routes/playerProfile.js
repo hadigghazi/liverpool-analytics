@@ -13,6 +13,15 @@ function decodeName(s) {
   }
 }
 
+function normalizeUrl(url) {
+  if (!url) return '';
+  const s = String(url).trim();
+  if (!s) return '';
+  if (s.startsWith('//')) return `https:${s}`;
+  if (s.startsWith('/')) return `https://www.transfermarkt.com${s}`;
+  return s;
+}
+
 function runTmProfileScrape(playerId, playerSlug, playerName) {
   const script =
     process.env.TM_SCRAPER_SCRIPT ||
@@ -161,7 +170,7 @@ router.get('/:playerName', async (req, res) => {
       ...tm,
       player: tm.player,
       market_value_eur: tm.market_value_eur,
-      photo_url: ((cached && cached.photo_url) || tm.photo_url || '').trim(),
+      photo_url: normalizeUrl((cached && cached.photo_url) || tm.photo_url || ''),
       height: (cached && cached.height) || tm.height || '',
       foot: (cached && cached.foot) || tm.foot || '',
       contract_expires: (cached && cached.contract_expires) || tm.contract_expires || '',
