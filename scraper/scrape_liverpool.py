@@ -1,6 +1,7 @@
 import soccerdata as sd
 import pandas as pd
 from google.cloud import bigquery
+from google.cloud.bigquery import LoadJobConfig, WriteDisposition
 from datetime import datetime
 import os, math
 from pathlib import Path
@@ -113,7 +114,7 @@ def scrape_and_load(season):
             {
                 "game_id": gid,
                 "season": season,
-                "date": str(d) if d else None,
+                "date": str(d)[:10] if d else None,
                 "gameweek": int(r["round"]) if pd.notna(r.get("round")) else None,
                 "home_team": r.get("home_team"),
                 "away_team": r.get("away_team"),
@@ -129,26 +130,22 @@ def scrape_and_load(season):
         )
 
     if match_rows:
-        # Delete this season's rows first (idempotent)
-        client.query(
-            f"""
-            DELETE FROM `{bq_table('raw_matches')}`
-            WHERE season = '{season}'
-        """
-        ).result()
-        errors = client.insert_rows_json(bq_table("raw_matches"), match_rows)
-        if errors:
-            print(f"Match insert errors: {errors}")
-        else:
-            print(f"Loaded {len(match_rows)} matches")
+        df = pd.DataFrame(match_rows)
+        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
+        job_config = LoadJobConfig(write_disposition=WriteDisposition.WRITE_TRUNCATE)
+        job = client.load_table_from_dataframe(
+            df, bq_table("raw_matches"), job_config=job_config
+        )
+        job.result()
+        print(f"Loaded {len(match_rows)} matches")
 
     # --- Player stats ---
     stat_map = {
         "standard": ["minutes", "goals", "assists", "xg", "xag"],
         "shooting": ["shots", "shots_on_tgt", "xg"],
-        "passing": ["passes_cmp", "passes_att", "key_passes", "prog_passes"],
-        "defense": ["tackles", "interceptions", "pressures"],
-        "possession": ["touches", "prog_carries"],
+        "playing_time": ["minutes"],
+        "misc": ["tackles", "interceptions", "pressures"],
+        "keeper": [],
     }
 
     player_rows = []
@@ -202,17 +199,13 @@ def scrape_and_load(season):
             print(f"  [{stat_type}] error: {e}")
 
     if player_rows:
-        client.query(
-            f"""
-            DELETE FROM `{bq_table('raw_player_stats')}`
-            WHERE season = '{season}'
-        """
-        ).result()
-        errors = client.insert_rows_json(bq_table("raw_player_stats"), player_rows)
-        if errors:
-            print(f"Player insert errors: {errors}")
-        else:
-            print(f"Loaded {len(player_rows)} player stat rows")
+        df = pd.DataFrame(player_rows)
+        job_config = LoadJobConfig(write_disposition=WriteDisposition.WRITE_TRUNCATE)
+        job = client.load_table_from_dataframe(
+            df, bq_table("raw_player_stats"), job_config=job_config
+        )
+        job.result()
+        print(f"Loaded {len(player_rows)} player stat rows")
 
     print(f"[{datetime.now()}] Done.")
 
