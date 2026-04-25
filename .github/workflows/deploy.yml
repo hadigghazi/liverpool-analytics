@@ -51,6 +51,12 @@ jobs:
           docker push $REGISTRY/dbt:$GITHUB_SHA
           docker push $REGISTRY/dbt:latest
 
+      - name: Build & push transfermarkt
+        run: |
+          docker build -t $REGISTRY/transfermarkt:$GITHUB_SHA -t $REGISTRY/transfermarkt:latest ./transfermarkt
+          docker push $REGISTRY/transfermarkt:$GITHUB_SHA
+          docker push $REGISTRY/transfermarkt:latest
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
