@@ -31,7 +31,11 @@ router.post('/', async (req, res) => {
       ),
       query(
         `
-        SELECT player, goals, assists, xg, minutes, tackles, pass_accuracy
+        SELECT player, goals, assists, minutes,
+               shots, shots_on_tgt, shot_accuracy,
+               tackles, interceptions,
+               fouls, fouled, offsides,
+               yellow_cards, red_cards
         FROM \`${process.env.GCP_PROJECT}.liverpool_analytics.liverpool_player_performance\`
         WHERE season = @season ORDER BY goals DESC LIMIT 10
       `,
