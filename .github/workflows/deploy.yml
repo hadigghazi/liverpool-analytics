@@ -32,7 +32,7 @@ jobs:
       - name: Build & push frontend
         run: |
           docker build \
-            --build-arg VITE_SEASON=${{ secrets.CURRENT_SEASON || '2526' }} \
+            --build-arg VITE_SEASON=${{ secrets.CURRENT_SEASON }} \
             -t $REGISTRY/frontend:$GITHUB_SHA \
             -t $REGISTRY/frontend:latest \
             ./frontend
