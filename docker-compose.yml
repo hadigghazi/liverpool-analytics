@@ -1,27 +1,22 @@
-version: "3.9"
 services:
   backend:
     image: ${REGISTRY}/backend:latest
     restart: unless-stopped
-    env_file: .env
     environment:
       GCP_PROJECT: ${GCP_PROJECT}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       FRONTEND_URL: https://${DOMAIN}
       CURRENT_SEASON: ${CURRENT_SEASON}
-    # ADC on GCP — no key mounts
 
   frontend:
     image: ${REGISTRY}/frontend:latest
     restart: unless-stopped
-    env_file: .env
     depends_on:
       - backend
 
   scraper:
     image: ${REGISTRY}/scraper:latest
     profiles: ["manual"]
-    env_file: .env
     environment:
       GCP_PROJECT: ${GCP_PROJECT}
       CURRENT_SEASON: ${CURRENT_SEASON}
@@ -29,7 +24,6 @@ services:
   nginx:
     image: nginx:alpine
     restart: unless-stopped
-    env_file: .env
     ports:
       - "80:80"
       - "443:443"
@@ -44,16 +38,22 @@ services:
   airflow:
     image: apache/airflow:2.9.0-python3.11
     restart: unless-stopped
-    env_file: .env
+    command: standalone
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - /var/run/docker.sock:/var/run/docker.sock
       - airflow_data:/opt/airflow
+
 volumes:
   airflow_data:
