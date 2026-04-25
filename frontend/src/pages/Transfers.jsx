@@ -214,13 +214,17 @@ function PlayerValueTable({ values, season }) {
   );
 }
 
-export default function Transfers() {
+export default function Transfers({ season }) {
   const [squadValues, setSquadValues] = useState([]);
   const [balance, setBalance] = useState([]);
   const [allTransfers, setAllTransfers] = useState([]);
   const [playerValues, setPlayerValues] = useState([]);
-  const [selectedSeason, setSelectedSeason] = useState('2425');
+  const [selectedSeason, setSelectedSeason] = useState(season || '2425');
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (season) setSelectedSeason(season);
+  }, [season]);
 
   useEffect(() => {
     Promise.all([
@@ -240,6 +244,7 @@ export default function Transfers() {
   const availableSeasons = squadValues.map(s => s.season).sort().reverse();
   const peakSeason = squadValues.reduce((max, s) =>
     (s.total_value_eur || 0) > (max.total_value_eur || 0) ? s : max, {});
+  const currentSquadValue = squadValues.find(s => s.season === (season || '2425'))?.total_value_eur;
 
   if (loading) return <div className={styles.loading}>Loading transfer data...</div>;
 
@@ -253,7 +258,7 @@ export default function Transfers() {
             <span className={styles.hstatLabel}>Peak squad value ({seasonLabel(peakSeason.season || '1819')})</span>
           </div>
           <div className={styles.hstat}>
-            <span className={styles.hstatVal}>{formatEur(squadValues.find(s => s.season === '2425')?.total_value_eur)}</span>
+            <span className={styles.hstatVal}>{formatEur(currentSquadValue)}</span>
             <span className={styles.hstatLabel}>Current squad value</span>
           </div>
         </div>
