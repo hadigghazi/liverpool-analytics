@@ -1,0 +1,11 @@
+liverpool:
+  target: prod
+  outputs:
+    prod:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT') }}"
+      dataset: liverpool_analytics
+      location: EU
+      threads: 4
+      timeout_seconds: 300

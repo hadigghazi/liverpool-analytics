@@ -1,0 +1,72 @@
+.chatbot {
+  background: #111122;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 480px;
+}
+.heading { font-size: 14px; font-weight: 600; color: #ccc; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; }
+.messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.messages::-webkit-scrollbar { width: 4px; }
+.messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+.msg { display: flex; gap: 8px; align-items: flex-start; }
+.user { flex-direction: row-reverse; }
+.avatar { font-size: 16px; flex-shrink: 0; padding-top: 2px; }
+.bubble {
+  max-width: 80%;
+  padding: 9px 13px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.assistant .bubble { background: #1c1c30; color: #ddd; border: 1px solid rgba(255,255,255,0.06); }
+.user .bubble { background: #c8102e; color: white; }
+.suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
+.suggestion {
+  background: rgba(200,16,46,0.08);
+  border: 1px solid rgba(200,16,46,0.2);
+  color: #c8102e;
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.suggestion:hover { background: rgba(200,16,46,0.15); }
+.inputRow { display: flex; gap: 8px; }
+.input {
+  flex: 1;
+  background: #0a0a14;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: #e8e8e8;
+  padding: 9px 13px;
+  font-size: 13px;
+}
+.input:focus { outline: none; border-color: #c8102e; }
+.input::placeholder { color: #444; }
+.send {
+  background: #c8102e;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.send:disabled { opacity: 0.4; cursor: not-allowed; }
+.dots { display: flex; gap: 4px; padding: 4px 0; }
+.dots span {
+  width: 6px; height: 6px;
+  background: #555;
+  border-radius: 50%;
+  animation: bounce 1.2s infinite;
+}
+.dots span:nth-child(2) { animation-delay: 0.2s; }
+.dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }

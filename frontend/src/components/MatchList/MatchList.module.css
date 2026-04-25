@@ -1,0 +1,35 @@
+.container {
+  background: #111122;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+.title { font-size: 14px; font-weight: 600; color: #ccc; margin: 0 0 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+.list { display: flex; flex-direction: column; gap: 8px; }
+.row {
+  display: grid;
+  grid-template-columns: 32px 1fr 52px 60px 64px;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.row:last-child { border-bottom: none; }
+.badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.win    { background: rgba(34,197,94,0.15); color: #22c55e; }
+.draw   { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.loss   { background: rgba(239,68,68,0.15); color: #ef4444; }
+.opponent { color: #e8e8e8; font-weight: 500; }
+.venue    { color: #666; font-size: 11px; }
+.score    { color: #fff; font-weight: 700; text-align: center; }
+.date     { color: #555; font-size: 11px; text-align: right; }
