@@ -1,0 +1,94 @@
+.nav {
+  display: flex;
+  align-items: center;
+  padding: 0 32px;
+  height: 60px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-accent);
+  gap: 32px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.crest {
+  width: 36px;
+  height: 36px;
+  background: var(--lfc-red);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: white;
+  letter-spacing: 1px;
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.season {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+}
+
+.tab {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  transition: all 0.15s;
+}
+
+.tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+.tab.active { color: var(--lfc-red); background: var(--lfc-red-dim); }
+
+.badge { flex-shrink: 0; }
+
+.champion {
+  font-size: 11px;
+  color: var(--lfc-gold);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(246,199,0,0.08);
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(246,199,0,0.2);
+}
+
+@media (max-width: 768px) {
+  .nav { padding: 0 16px; }
+  .badge { display: none; }
+  .tab { padding: 6px 10px; }
+}
+

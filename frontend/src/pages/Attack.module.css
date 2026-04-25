@@ -1,0 +1,140 @@
+.page { display: flex; flex-direction: column; gap: 24px; }
+.loading { color: var(--text-muted); text-align: center; padding: 80px; }
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pageTitle {
+  font-family: var(--font-display);
+  font-size: 36px;
+  color: var(--text);
+  letter-spacing: 1px;
+}
+
+.headerStats { display: flex; gap: 32px; }
+
+.hstat { display: flex; flex-direction: column; align-items: flex-end; }
+.hstatVal { font-family: var(--font-display); font-size: 28px; color: var(--lfc-red); }
+.hstatLabel { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.chart {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+
+.chartTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 16px;
+}
+
+.insight {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+
+.bars { display: flex; flex-direction: column; gap: 8px; }
+
+.barRow { display: flex; align-items: center; gap: 10px; }
+.barName { font-size: 12px; color: var(--text-dim); width: 72px; text-align: right; flex-shrink: 0; }
+.barTrack { flex: 1; height: 22px; background: rgba(255,255,255,0.04); border-radius: 4px; position: relative; overflow: hidden; }
+.barFill { height: 100%; background: var(--lfc-red); border-radius: 4px; transition: width 0.5s ease; }
+.barFillGold { height: 100%; background: var(--lfc-gold); border-radius: 4px; transition: width 0.5s ease; }
+.barVal { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 600; color: var(--text); font-family: var(--font-mono); }
+.barSub { font-size: 11px; color: var(--text-muted); width: 24px; text-align: right; flex-shrink: 0; }
+
+.shotGrid { display: flex; flex-direction: column; gap: 0; }
+
+.shotHeader {
+  display: grid;
+  grid-template-columns: 1fr 48px 56px 48px 48px 56px;
+  gap: 8px;
+  padding: 6px 0 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.shotRow {
+  display: grid;
+  grid-template-columns: 1fr 48px 56px 48px 48px 56px;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  font-size: 12px;
+  align-items: center;
+}
+
+.shotRow:last-child { border-bottom: none; }
+
+.playerName { color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.goals { color: var(--lfc-red); font-weight: 700; }
+.conv { color: var(--text-muted); }
+.hot { color: #22c55e; font-weight: 700; }
+.warm { color: #f59e0b; }
+
+.venueStats {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.venueStat { display: flex; flex-direction: column; gap: 2px; }
+.venueLabel { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.venueVal { font-family: var(--font-display); font-size: 36px; color: var(--text); }
+.venueSub { font-size: 11px; color: var(--text-dim); }
+.venueDivider { width: 1px; height: 48px; background: var(--border); }
+
+.goalTimeline {
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  height: 80px;
+  margin-bottom: 8px;
+}
+
+.gwBar {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  cursor: default;
+  border-radius: 3px 3px 0 0;
+  overflow: hidden;
+}
+
+.gwFill { width: 100%; border-radius: 3px 3px 0 0; }
+.homeBar { background: var(--lfc-red); }
+.awayBar { background: var(--lfc-gold); }
+
+.barLegend { display: flex; gap: 16px; font-size: 11px; color: var(--text-muted); }
+.barLegend span { display: flex; align-items: center; gap: 5px; }
+.dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; }
+  .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .headerStats { gap: 20px; }
+  .hstat { align-items: flex-start; }
+}
+

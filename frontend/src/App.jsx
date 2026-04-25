@@ -1,32 +1,26 @@
 import { useState } from 'react';
 import Dashboard from './pages/Dashboard.jsx';
-import Players from './pages/Players.jsx';
+import Attack from './pages/Attack.jsx';
+import Defense from './pages/Defense.jsx';
+import Squad from './pages/Squad.jsx';
+import Nav from './components/Nav/Nav.jsx';
 import styles from './styles/App.module.css';
 
 export default function App() {
   const [tab, setTab] = useState('dashboard');
 
+  const pages = {
+    dashboard: <Dashboard />,
+    attack: <Attack />,
+    defense: <Defense />,
+    squad: <Squad />,
+  };
+
   return (
     <div className={styles.app}>
-      <nav className={styles.nav}>
-        <div className={styles.brand}>
-          <span className={styles.badge}>LFC</span>
-          <span className={styles.title}>Analytics</span>
-        </div>
-        <div className={styles.tabs}>
-          {['dashboard', 'players'].map((t) => (
-            <button
-              key={t}
-              className={`${styles.tab} ${tab === t ? styles.active : ''}`}
-              onClick={() => setTab(t)}
-            >
-              {t === 'dashboard' ? 'Season Overview' : 'Player Stats'}
-            </button>
-          ))}
-        </div>
-      </nav>
       <main className={styles.main}>
-        {tab === 'dashboard' ? <Dashboard /> : <Players />}
+        <Nav tab={tab} setTab={setTab} />
+        {pages[tab]}
       </main>
     </div>
   );
