@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import { useMatches, useSummary } from '../hooks/useData.js';
 import StatCard from '../components/StatCard/StatCard.jsx';
 import FormStrip from '../components/FormStrip/FormStrip.jsx';
@@ -6,12 +6,25 @@ import AIChatbot from '../components/AIChatbot/AIChatbot.jsx';
 import styles from './Dashboard.module.css';
 
 const RESULT_COLOR = { W: '#22c55e', D: '#f59e0b', L: '#ef4444' };
+const POINTS_PAD = { t: 16, r: 16, b: 28, l: 36 };
+
+function seasonTitle(s) {
+  if (!s) return '—';
+  return `20${s.slice(0, 2)} — ${s.slice(2)}`;
+}
 
 function PointsChart({ matches }) {
   const canvasRef = useRef(null);
+  const [tip, setTip] = useState(null);
+
+  const played = useMemo(
+    () => matches.filter(m => m.result),
+    [matches]
+  );
 
   useEffect(() => {
     if (!matches.length) return;
+    if (!played.length) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     const W = canvas.offsetWidth;
@@ -20,9 +33,10 @@ function PointsChart({ matches }) {
     canvas.height = H * window.devicePixelRatio;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
-    const played = matches.filter(m => m.result);
     const maxPts = Math.max(...played.map(m => m.cumulative_points || 0));
-    const pad = { t: 16, r: 16, b: 28, l: 36 };
+    const denom = maxPts + 5;
+    const xDenom = Math.max(1, played.length - 1);
+    const pad = POINTS_PAD;
     const cw = W - pad.l - pad.r;
     const ch = H - pad.t - pad.b;
 
@@ -30,7 +44,7 @@ function PointsChart({ matches }) {
 
     // Grid lines
     [0, 25, 50, 75, 91].forEach(pts => {
-      const y = pad.t + ch - (pts / (maxPts + 5)) * ch;
+      const y = pad.t + ch - (pts / denom) * ch;
       ctx.beginPath();
       ctx.strokeStyle = 'rgba(255,255,255,0.04)';
       ctx.lineWidth = 1;
@@ -46,8 +60,8 @@ function PointsChart({ matches }) {
     // Area fill under line
     ctx.beginPath();
     played.forEach((m, i) => {
-      const x = pad.l + (i / (played.length - 1)) * cw;
-      const y = pad.t + ch - ((m.cumulative_points || 0) / (maxPts + 5)) * ch;
+      const x = pad.l + (i / xDenom) * cw;
+      const y = pad.t + ch - ((m.cumulative_points || 0) / denom) * ch;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.lineTo(pad.l + cw, pad.t + ch);
@@ -62,16 +76,16 @@ function PointsChart({ matches }) {
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     played.forEach((m, i) => {
-      const x = pad.l + (i / (played.length - 1)) * cw;
-      const y = pad.t + ch - ((m.cumulative_points || 0) / (maxPts + 5)) * ch;
+      const x = pad.l + (i / xDenom) * cw;
+      const y = pad.t + ch - ((m.cumulative_points || 0) / denom) * ch;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.stroke();
 
     // Dots colored by result
     played.forEach((m, i) => {
-      const x = pad.l + (i / (played.length - 1)) * cw;
-      const y = pad.t + ch - ((m.cumulative_points || 0) / (maxPts + 5)) * ch;
+      const x = pad.l + (i / xDenom) * cw;
+      const y = pad.t + ch - ((m.cumulative_points || 0) / denom) * ch;
       ctx.beginPath();
       ctx.arc(x, y, 3.5, 0, Math.PI * 2);
       ctx.fillStyle = RESULT_COLOR[m.result] || '#888';
@@ -81,15 +95,73 @@ function PointsChart({ matches }) {
     // X labels every 5
     played.forEach((m, i) => {
       if (i % 5 !== 0) return;
-      const x = pad.l + (i / (played.length - 1)) * cw;
+      const x = pad.l + (i / xDenom) * cw;
       ctx.fillStyle = '#6b6b80';
       ctx.font = '10px DM Sans';
       ctx.textAlign = 'center';
       ctx.fillText(m.match_number || i + 1, x, H - 6);
     });
-  }, [matches]);
+  }, [matches, played]);
 
-  return <canvas ref={canvasRef} className={styles.canvas} />;
+  const onMovePoints = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !played.length) return;
+    const W = canvas.clientWidth;
+    const pad = POINTS_PAD;
+    const cw = W - pad.l - pad.r;
+    const x = e.nativeEvent.offsetX;
+    if (x < pad.l || x > W - pad.r) {
+      setTip(null);
+      return;
+    }
+    const n = played.length;
+    if (n < 1) {
+      setTip(null);
+      return;
+    }
+    const rel = (x - pad.l) / cw;
+    const idx = n === 1 ? 0 : Math.min(n - 1, Math.max(0, Math.round(rel * (n - 1))));
+    const m = played[idx];
+    if (!m) {
+      setTip(null);
+      return;
+    }
+    setTip({
+      x,
+      y: e.nativeEvent.offsetY,
+      title: `Match ${m.match_number || idx + 1}`,
+      lines: [
+        `${m.result} · ${m.lfc_goals ?? '—'}–${m.opp_goals ?? '—'} vs ${m.opponent || '—'}`,
+        `Points: ${m.cumulative_points ?? '—'}`,
+        `${m.venue_type === 'home' ? 'Home' : m.venue_type === 'away' ? 'Away' : 'Venue'}`,
+      ],
+    });
+  };
+
+  const onLeave = () => setTip(null);
+
+  if (!matches.length) return null;
+
+  return (
+    <div
+      className={styles.chartWrap}
+      onMouseMove={onMovePoints}
+      onMouseLeave={onLeave}
+    >
+      <canvas ref={canvasRef} className={styles.canvas} />
+      {tip && (
+        <div
+          className={styles.chartTooltip}
+          style={{ left: tip.x, top: tip.y }}
+        >
+          <div className={styles.ttTitle}>{tip.title}</div>
+          {tip.lines.map((line, i) => (
+            <div key={i} className={styles.ttLine}>{line}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ResultDonut({ wins, draws, losses }) {
@@ -175,7 +247,7 @@ export default function Dashboard({ season }) {
     <div className={styles.page}>
       <div className={styles.heroSection}>
         <div className={styles.heroLeft}>
-          <h1 className={styles.heroTitle}>2024 — 25</h1>
+          <h1 className={styles.heroTitle}>{seasonTitle(season)}</h1>
           <p className={styles.heroSub}>Premier League Champions · {summary?.points || 0} points</p>
           <FormStrip matches={played} />
         </div>

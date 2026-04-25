@@ -37,7 +37,40 @@
   padding: 20px;
 }
 
+.chartWrap {
+  position: relative;
+  width: 100%;
+  cursor: crosshair;
+}
+
 .canvas { width: 100%; height: 220px; display: block; }
+
+.chartTooltip {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, calc(-100% - 8px));
+  min-width: 190px;
+  max-width: 300px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(10, 10, 20, 0.92);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  pointer-events: none;
+}
+
+.ttTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.ttLine {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
 
 .legend { display: flex; gap: 16px; margin-top: 10px; font-size: 11px; color: var(--text-muted); }
 .legend span { display: flex; align-items: center; gap: 5px; }
