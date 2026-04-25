@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
 import { query } from '../db/bigquery.js';
+import { defaultSeason } from '../loadEnv.js';
 
 const router = Router();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -10,7 +11,7 @@ router.post('/', async (req, res) => {
   if (!message) return res.status(400).json({ error: 'message required' });
 
   try {
-    const season = '2425';
+    const season = defaultSeason;
 
     const [matches, summary, players] = await Promise.all([
       query(

@@ -3,33 +3,40 @@ services:
   backend:
     image: ${REGISTRY}/backend:latest
     restart: unless-stopped
+    env_file: .env
     environment:
       GCP_PROJECT: ${GCP_PROJECT}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       FRONTEND_URL: https://${DOMAIN}
-    # no volumes needed for auth (ADC)
+      CURRENT_SEASON: ${CURRENT_SEASON}
+    # ADC on GCP — no key mounts
 
   frontend:
     image: ${REGISTRY}/frontend:latest
     restart: unless-stopped
+    env_file: .env
     depends_on:
       - backend
 
   scraper:
     image: ${REGISTRY}/scraper:latest
     profiles: ["manual"]
+    env_file: .env
     environment:
       GCP_PROJECT: ${GCP_PROJECT}
+      CURRENT_SEASON: ${CURRENT_SEASON}
 
   nginx:
     image: nginx:alpine
     restart: unless-stopped
+    env_file: .env
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf.template:/tmp/nginx.conf.template:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
+    command: /bin/sh -c "sed 's|__DOMAIN__|${DOMAIN}|g' /tmp/nginx.conf.template > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
     depends_on:
       - frontend
       - backend
@@ -37,17 +44,16 @@ services:
   airflow:
     image: apache/airflow:2.9.0-python3.11
     restart: unless-stopped
+    env_file: .env
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET}
-      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - /var/run/docker.sock:/var/run/docker.sock
       - airflow_data:/opt/airflow
-
 volumes:
   airflow_data:

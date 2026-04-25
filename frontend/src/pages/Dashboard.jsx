@@ -14,6 +14,7 @@ import {
 import SeasonSummary from '../components/SeasonSummary/SeasonSummary.jsx';
 import MatchList from '../components/MatchList/MatchList.jsx';
 import AIChatbot from '../components/AIChatbot/AIChatbot.jsx';
+import { appSeason } from '../config.js';
 import styles from './Dashboard.module.css';
 
 const RESULT_COLOR = { W: '#22c55e', D: '#f59e0b', L: '#ef4444' };
@@ -25,8 +26,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/matches?season=2425').then((r) => r.json()),
-      fetch('/api/matches/summary?season=2425').then((r) => r.json()),
+      fetch(`/api/matches?season=${encodeURIComponent(appSeason)}`).then((r) => r.json()),
+      fetch(`/api/matches/summary?season=${encodeURIComponent(appSeason)}`).then((r) => r.json()),
     ]).then(([m, s]) => {
       setMatches(m);
       setSummary(s);

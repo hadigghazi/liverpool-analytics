@@ -1,5 +1,7 @@
 FROM node:20-alpine AS build
 WORKDIR /app
+ARG VITE_SEASON=2425
+ENV VITE_SEASON=$VITE_SEASON
 COPY package.json .
 RUN npm install
 COPY . .

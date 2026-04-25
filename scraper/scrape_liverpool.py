@@ -3,6 +3,11 @@ import pandas as pd
 from google.cloud import bigquery
 from datetime import datetime
 import os, math
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 PROJECT = os.environ["GCP_PROJECT"]
 DATASET = "liverpool_analytics"
@@ -84,7 +89,7 @@ def clean_float(val):
         return None
 
 
-def scrape_and_load(season="2425"):
+def scrape_and_load(season):
     print(f"[{datetime.now()}] Scraping season {season}...")
     now = datetime.utcnow()
 
@@ -212,5 +217,6 @@ if __name__ == "__main__":
     import sys
 
     ensure_tables()
-    season = sys.argv[1] if len(sys.argv) > 1 else "2425"
+    default = os.environ.get("CURRENT_SEASON", "2425")
+    season = sys.argv[1] if len(sys.argv) > 1 else default
     scrape_and_load(season)

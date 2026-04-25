@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { query } from '../db/bigquery.js';
+import { defaultSeason } from '../loadEnv.js';
 
 const router = Router();
 
 router.get('/', async (req, res) => {
   try {
-    const { season = '2425', sort = 'goals', order = 'DESC' } = req.query;
+    const { season = defaultSeason, sort = 'goals', order = 'DESC' } = req.query;
     const allowed = [
       'goals',
       'assists',

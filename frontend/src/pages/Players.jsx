@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { appSeason } from '../config.js';
 import styles from './Players.module.css';
 
 const COLS = [
@@ -24,7 +25,7 @@ export default function Players() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/players?season=2425&sort=${sort}&order=${order}`)
+    fetch(`/api/players?season=${encodeURIComponent(appSeason)}&sort=${sort}&order=${order}`)
       .then((r) => r.json())
       .then((d) => {
         setPlayers(d);

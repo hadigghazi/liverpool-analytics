@@ -1,3 +1,5 @@
+# method: oauth uses Google Application Default Credentials (ADC) — e.g. GCE/Cloud Run
+# or `gcloud auth application-default login` for local dev.
 liverpool:
   target: prod
   outputs:

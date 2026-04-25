@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { query } from '../db/bigquery.js';
+import { defaultSeason } from '../loadEnv.js';
 
 const router = Router();
 
 router.get('/', async (req, res) => {
   try {
-    const { season = '2425' } = req.query;
+    const { season = defaultSeason } = req.query;
     const rows = await query(
       `
       SELECT game_id, date, gameweek, opponent, venue_type,
@@ -24,7 +25,7 @@ router.get('/', async (req, res) => {
 
 router.get('/summary', async (req, res) => {
   try {
-    const { season = '2425' } = req.query;
+    const { season = defaultSeason } = req.query;
     const rows = await query(
       `
       SELECT * FROM \`${process.env.GCP_PROJECT}.liverpool_analytics.liverpool_season_summary\`

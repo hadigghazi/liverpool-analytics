@@ -26,7 +26,9 @@ jobs:
 
       - name: Build & push frontend
         run: |
-          docker build -t $REGISTRY/frontend:$GITHUB_SHA -t $REGISTRY/frontend:latest ./frontend
+          S='${{ secrets.CURRENT_SEASON }}'
+          [ -n "$S" ] || S=2425
+          docker build --build-arg "VITE_SEASON=$S" -t $REGISTRY/frontend:$GITHUB_SHA -t $REGISTRY/frontend:latest ./frontend
           docker push $REGISTRY/frontend:$GITHUB_SHA
           docker push $REGISTRY/frontend:latest
 
@@ -58,6 +60,9 @@ jobs:
             echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
             echo "DOMAIN=${{ secrets.DOMAIN }}" >> .env
             echo "AIRFLOW_SECRET=${{ secrets.AIRFLOW_SECRET }}" >> .env
+            SEAS='${{ secrets.CURRENT_SEASON }}'
+            if [ -z "$SEAS" ]; then SEAS=2425; fi
+            echo "CURRENT_SEASON=$SEAS" >> .env
             gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
             docker compose pull backend frontend scraper
             docker compose up -d backend frontend nginx airflow

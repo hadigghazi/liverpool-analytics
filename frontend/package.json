@@ -1,6 +1,7 @@
 {
   "name": "liverpool-frontend",
   "version": "1.0.0",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,6 +13,7 @@
     "recharts": "^2.12.7"
   },
   "devDependencies": {
+    "@eslint/js": "^9.9.1",
     "@vitejs/plugin-react": "^4.3.1",
     "eslint": "^9.9.1",
     "eslint-plugin-react": "^7.35.0",
