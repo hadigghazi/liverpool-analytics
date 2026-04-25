@@ -39,8 +39,8 @@ function PlayerCard({ p }) {
   );
 }
 
-export default function Squad() {
-  const { data: players, loading } = usePlayers();
+export default function Squad({ season }) {
+  const { data: players, loading } = usePlayers(season);
   const [sort, setSort] = useState('goals');
   const [order, setOrder] = useState('DESC');
   const [view, setView] = useState('table');

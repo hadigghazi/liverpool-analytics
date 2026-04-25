@@ -86,6 +86,29 @@
   border: 1px solid rgba(246,199,0,0.2);
 }
 
+.right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.seasonSelect {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 5px 10px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.seasonSelect:focus { border-color: var(--border-accent); }
+.seasonSelect option { background: #0f0f1c; }
+
 @media (max-width: 768px) {
   .nav { padding: 0 16px; }
   .badge { display: none; }

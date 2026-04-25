@@ -13,5 +13,6 @@ SELECT
     COUNTIF(venue_type = 'home' AND result = 'W')                         AS home_wins,
     COUNTIF(venue_type = 'away' AND result = 'W')                         AS away_wins
 FROM {{ ref('stg_matches') }}
+WHERE result IS NOT NULL
 GROUP BY season
 ORDER BY season DESC

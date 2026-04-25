@@ -144,9 +144,9 @@ function OffsideContext({ players }) {
   );
 }
 
-export default function Attack() {
-  const { data: players, loading: pLoading } = usePlayers();
-  const { data: matches, loading: mLoading } = useMatches();
+export default function Attack({ season }) {
+  const { data: players, loading: pLoading } = usePlayers(season);
+  const { data: matches, loading: mLoading } = useMatches(season);
 
   if (pLoading || mLoading) return <div className={styles.loading}>Loading attack data...</div>;
 

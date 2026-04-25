@@ -16,4 +16,4 @@ SELECT
     ROW_NUMBER()
         OVER (PARTITION BY season ORDER BY date)   AS match_number
 FROM {{ ref('stg_matches') }}
-ORDER BY season, date
+ORDER BY season DESC, date
