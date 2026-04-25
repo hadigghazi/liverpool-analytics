@@ -18,10 +18,8 @@ client = bigquery.Client(project=PROJECT)  # no keyfile, uses ADC
 def bq_table(name):
     return f"{PROJECT}.{DATASET}.{name}"
 
-
 def ensure_tables():
-    client.query(
-        f"""
+    client.query(f"""
         CREATE TABLE IF NOT EXISTS `{bq_table('raw_matches')}` (
             game_id       STRING,
             season        STRING,
@@ -36,11 +34,9 @@ def ensure_tables():
         )
         PARTITION BY date
         OPTIONS (require_partition_filter = false)
-    """
-    ).result()
+    """).result()
 
-    client.query(
-        f"""
+    client.query(f"""
         CREATE TABLE IF NOT EXISTS `{bq_table('raw_player_stats')}` (
             season        STRING,
             player        STRING,
@@ -64,12 +60,9 @@ def ensure_tables():
             prog_carries  FLOAT64,
             scraped_at    TIMESTAMP
         )
-        PARTITION BY RANGE_BUCKET(CAST(SUBSTR(season,1,2) AS INT64), GENERATE_ARRAY(17,30,1))
-    """
-    ).result()
+    """).result()
 
-    client.query(
-        f"""
+    client.query(f"""
         CREATE TABLE IF NOT EXISTS `{bq_table('raw_team_stats')}` (
             season        STRING,
             team          STRING,
@@ -77,9 +70,9 @@ def ensure_tables():
             data_json     STRING,
             scraped_at    TIMESTAMP
         )
-    """
-    ).result()
+    """).result()
 
+    print("Tables ready.")
 
 def clean_float(val):
     try:
