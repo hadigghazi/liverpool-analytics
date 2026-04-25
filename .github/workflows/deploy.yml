@@ -25,7 +25,7 @@ jobs:
 
       - name: Build & push backend
         run: |
-          docker build -t $REGISTRY/backend:$GITHUB_SHA -t $REGISTRY/backend:latest ./backend
+          docker build -f backend/Dockerfile -t $REGISTRY/backend:$GITHUB_SHA -t $REGISTRY/backend:latest .
           docker push $REGISTRY/backend:$GITHUB_SHA
           docker push $REGISTRY/backend:latest
 

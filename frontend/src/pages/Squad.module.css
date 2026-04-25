@@ -82,9 +82,13 @@
   align-items: center;
   gap: 12px;
   transition: border-color 0.15s;
+  cursor: pointer;
 }
 
 .card:hover { border-color: var(--border-accent); }
+
+.clickableRow { cursor: pointer; }
+.clickableRow:hover .td { color: var(--text); }
 
 .cardAvatar {
   width: 40px;

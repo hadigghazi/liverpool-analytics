@@ -1,0 +1,39 @@
+.wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.flex1 {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  cursor: crosshair;
+}
+
+.tip {
+  position: absolute;
+  z-index: 20;
+  transform: translate(-50%, calc(-100% - 8px));
+  min-width: 200px;
+  max-width: 320px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(10, 10, 20, 0.92);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  pointer-events: none;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.line {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}

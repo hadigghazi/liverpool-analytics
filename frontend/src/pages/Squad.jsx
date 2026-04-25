@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePlayers } from '../hooks/useData.js';
+import PlayerModal from '../components/PlayerModal/PlayerModal.jsx';
 import styles from './Squad.module.css';
 
 const COLS = [
@@ -19,11 +20,17 @@ const COLS = [
   { key: 'yellow_cards',      label: 'YC',       fmt: v => v || 0 },
 ];
 
-function PlayerCard({ p }) {
+function PlayerCard({ p, onSelect }) {
   const initials = p.player.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const per90min = p.minutes > 0 ? ((p.goals || 0) / (p.minutes / 90)).toFixed(2) : '0.00';
   return (
-    <div className={styles.card}>
+    <div
+      className={styles.card}
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect?.(p.player)}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect?.(p.player); } }}
+    >
       <div className={styles.cardAvatar}>{initials}</div>
       <div className={styles.cardInfo}>
         <span className={styles.cardName}>{p.player}</span>
@@ -44,6 +51,7 @@ export default function Squad({ season }) {
   const [sort, setSort] = useState('goals');
   const [order, setOrder] = useState('DESC');
   const [view, setView] = useState('table');
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
 
   const sorted = [...players].sort((a, b) => {
     const av = a[sort] || 0;
@@ -77,7 +85,7 @@ export default function Squad({ season }) {
       {view === 'cards' ? (
         <div className={styles.cards}>
           {[...players].sort((a, b) => (b.goals || 0) - (a.goals || 0)).map(p => (
-            <PlayerCard key={p.player} p={p} />
+            <PlayerCard key={p.player} p={p} onSelect={setSelectedPlayer} />
           ))}
         </div>
       ) : (
@@ -99,7 +107,11 @@ export default function Squad({ season }) {
             </thead>
             <tbody>
               {sorted.map((p, i) => (
-                <tr key={p.player} className={i % 2 === 0 ? styles.even : ''}>
+                <tr
+                  key={p.player}
+                  className={`${i % 2 === 0 ? styles.even : ''} ${styles.clickableRow}`}
+                  onClick={() => setSelectedPlayer(p.player)}
+                >
                   {COLS.map(c => (
                     <td
                       key={c.key}
@@ -113,6 +125,14 @@ export default function Squad({ season }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {selectedPlayer && (
+        <PlayerModal
+          playerName={selectedPlayer}
+          season={season}
+          onClose={() => setSelectedPlayer(null)}
+        />
       )}
     </div>
   );

@@ -314,13 +314,46 @@ function TopTransfers({ transfers, direction }) {
   );
 }
 
+function hasFbrefPerf(p) {
+  return p.minutes != null || p.goals != null || p.assists != null;
+}
+
 function PlayerValueTable({ values, season }) {
+  const wrapRef = useRef(null);
+  const [tip, setTip] = useState(null);
+
   const filtered = values
     .filter(v => v.season === season && v.market_value_eur)
     .sort((a, b) => (b.market_value_eur || 0) - (a.market_value_eur || 0));
 
+  const missingPerfNote = filtered.length > 0 && filtered.every(p => !hasFbrefPerf(p));
+
+  const onRowMove = (e, p) => {
+    const root = wrapRef.current;
+    if (!root) return;
+    const rr = root.getBoundingClientRect();
+    setTip({
+      x: e.clientX - rr.left,
+      y: e.clientY - rr.top,
+      player: p.player,
+      lines: buildPlayerValueTipLines(p),
+    });
+  };
+
+  const onLeave = () => setTip(null);
+
+  if (!season) {
+    return <div className={styles.valueHint}>Select a season in the header to view player values.</div>;
+  }
+
   return (
-    <div className={styles.valueTable}>
+    <div className={styles.valueTableWrap} ref={wrapRef} onMouseLeave={onLeave}>
+      {missingPerfNote && (
+        <div className={styles.valueHint}>
+          FBref performance stats are not available for this season in the dataset yet — you will still see Transfermarkt market values.
+        </div>
+      )}
+      <div className={styles.valueTable}>
       <div className={styles.valueHeader}>
         <span>Player</span>
         <span>Pos</span>
@@ -330,22 +363,59 @@ function PlayerValueTable({ values, season }) {
         <span>G+A/€10m</span>
       </div>
       {filtered.map((p, i) => {
-        const ga = (p.goals || 0) + (p.assists || 0);
+        const perf = hasFbrefPerf(p);
+        const ga = perf ? ((p.goals || 0) + (p.assists || 0)) : null;
         return (
-          <div key={i} className={`${styles.valueRow} ${i % 2 === 0 ? styles.even : ''}`}>
+          <div
+            key={i}
+            className={`${styles.valueRow} ${i % 2 === 0 ? styles.even : ''}`}
+            onMouseMove={e => onRowMove(e, p)}
+          >
             <span className={styles.valueName}>{p.player}</span>
             <span className={styles.valuePos}>{p.position?.split(' ')[0]}</span>
             <span>{p.age}</span>
             <span className={styles.valueAmount}>{formatEur(p.market_value_eur)}</span>
-            <span>{ga || '—'}</span>
-            <span className={`${styles.efficiency} ${p.contributions_per_10m > 2 ? styles.hot : ''}`}>
-              {p.contributions_per_10m?.toFixed(2) || '—'}
+            <span>{perf ? (ga || 0) : '—'}</span>
+            <span className={`${styles.efficiency} ${perf && p.contributions_per_10m > 2 ? styles.hot : ''}`}>
+              {perf ? (p.contributions_per_10m?.toFixed(2) || '—') : '—'}
             </span>
           </div>
         );
       })}
+      </div>
+
+      {tip && (
+        <div className={styles.rowTooltip} style={{ left: tip.x, top: tip.y }}>
+          <div className={styles.ttTitle}>{tip.player}</div>
+          {tip.lines.map((line, idx) => (
+            <div key={idx} className={styles.ttLine}>{line}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+function buildPlayerValueTipLines(p) {
+  const lines = [
+    `Market value: ${formatEur(p.market_value_eur)}`,
+    `Position: ${p.position || '—'}`,
+    `Age: ${p.age ?? '—'}`,
+  ];
+  if (p.nationality) lines.push(`Nationality: ${p.nationality}`);
+
+  if (!hasFbrefPerf(p)) {
+    lines.push('FBref stats: not available for this season (no joined minutes/goals/assists).');
+    return lines;
+  }
+
+  lines.push(`Minutes: ${Math.round(p.minutes || 0)}`);
+  lines.push(`Goals: ${p.goals ?? 0} · Assists: ${p.assists ?? 0}`);
+  lines.push(`Shots: ${p.shots ?? 0} · Tackles: ${p.tackles ?? 0}`);
+  if (p.contributions_per_10m != null) {
+    lines.push(`Contributions / €10m: ${p.contributions_per_10m.toFixed(2)}`);
+  }
+  return lines;
 }
 
 export default function Transfers({ season }) {
@@ -353,12 +423,7 @@ export default function Transfers({ season }) {
   const [balance, setBalance] = useState([]);
   const [allTransfers, setAllTransfers] = useState([]);
   const [playerValues, setPlayerValues] = useState([]);
-  const [selectedSeason, setSelectedSeason] = useState(season || '2425');
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (season) setSelectedSeason(season);
-  }, [season]);
 
   useEffect(() => {
     Promise.all([
@@ -375,7 +440,6 @@ export default function Transfers({ season }) {
     }).catch(() => setLoading(false));
   }, []);
 
-  const availableSeasons = squadValues.map(s => s.season).sort().reverse();
   const peakSeason = squadValues.reduce((max, s) =>
     (s.total_value_eur || 0) > (max.total_value_eur || 0) ? s : max, {});
   const currentSquadValue = squadValues.find(s => s.season === (season || '2425'))?.total_value_eur;
@@ -434,20 +498,9 @@ export default function Transfers({ season }) {
         </div>
 
         <div>
-          <div className={styles.seasonPickerRow}>
-            <h2 className={styles.sectionTitle}>Player values — value vs performance</h2>
-            <select
-              className={styles.seasonSelect}
-              value={selectedSeason}
-              onChange={e => setSelectedSeason(e.target.value)}
-            >
-              {availableSeasons.map(s => (
-                <option key={s} value={s}>{seasonLabel(s)}</option>
-              ))}
-            </select>
-          </div>
+          <h2 className={styles.sectionTitle}>Player values — value vs performance</h2>
           <div className={styles.transferCard}>
-            <PlayerValueTable values={playerValues} season={selectedSeason} />
+            <PlayerValueTable values={playerValues} season={season} />
           </div>
         </div>
       </div>
