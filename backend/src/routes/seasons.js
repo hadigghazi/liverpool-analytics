@@ -26,9 +26,17 @@ router.get('/', async (req, res) => {
       season: normalizeSeason(r.season),
     }));
 
-    const seen = new Set(normalizedRows.map((r) => r.season));
+    // Only return seasons that actually have FBref data, otherwise selecting them
+    // makes the dashboards look "empty" even though Transfermarkt has history.
+    const filtered = normalizedRows.filter((r) => {
+      const mc = Number(r.matches_count ?? 0);
+      const pc = Number(r.players_count ?? 0);
+      return mc > 0 || pc > 0;
+    });
+
+    const seen = new Set(filtered.map((r) => r.season));
     if (normalizedDefault && !seen.has(normalizedDefault)) {
-      normalizedRows.unshift({
+      filtered.unshift({
         season: normalizedDefault,
         matches_count: null,
         players_count: null,
@@ -37,7 +45,7 @@ router.get('/', async (req, res) => {
       });
     }
 
-    const seasons = normalizedRows.map((r) => ({
+    const seasons = filtered.map((r) => ({
       season: r.season,
       label: seasonLabel(r.season),
       is_complete: r.is_complete,
