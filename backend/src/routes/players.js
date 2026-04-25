@@ -11,12 +11,14 @@ router.get('/', async (req, res) => {
       'goals',
       'assists',
       'goal_contributions',
-      'xg',
       'minutes',
-      'tackles',
-      'pass_accuracy',
+      'shots',
+      'shots_on_tgt',
       'shot_accuracy',
-      'key_passes',
+      'tackles',
+      'interceptions',
+      'fouls',
+      'offsides',
     ];
     const col = allowed.includes(sort) ? sort : 'goals';
     const dir = order === 'ASC' ? 'ASC' : 'DESC';
@@ -24,9 +26,9 @@ router.get('/', async (req, res) => {
     const rows = await query(
       `
       SELECT player, season, minutes, goals, assists, goal_contributions,
-             xg, xag, goals_vs_xg, shots, shot_accuracy,
-             pass_accuracy, key_passes, prog_passes,
-             tackles, interceptions, pressures, prog_carries
+             shots, shots_on_tgt, shot_accuracy,
+             tackles, interceptions, fouls, fouled, offsides,
+             yellow_cards, red_cards
       FROM \`${process.env.GCP_PROJECT}.liverpool_analytics.liverpool_player_performance\`
       WHERE season = @season
       ORDER BY ${col} ${dir}
