@@ -137,6 +137,36 @@ def parse_tm_profile_href(href):
     return "", ""
 
 
+def normalize_tm_url(url):
+    if not url:
+        return ""
+    url = url.strip()
+    if url.startswith("//"):
+        return "https:" + url
+    if url.startswith("/"):
+        return BASE + url
+    return url
+
+
+def pick_image_url(img):
+    if not img:
+        return ""
+    # Transfermarkt frequently lazy-loads images.
+    # Prefer data-src / data-srcset then src.
+    cand = (
+        img.get("data-src")
+        or img.get("data-srcset")
+        or img.get("srcset")
+        or img.get("src")
+        or ""
+    )
+    cand = cand.strip()
+    if " " in cand and (".jpg" in cand or ".png" in cand or ".webp" in cand):
+        # data-srcset/srcset: "url 1x, url2 2x" -> take first url
+        cand = cand.split(",")[0].strip().split(" ")[0].strip()
+    return normalize_tm_url(cand)
+
+
 def scrape_player_profile(scraper, player_id, player_slug):
     if not player_id or not player_slug:
         return None
@@ -148,9 +178,7 @@ def scrape_player_profile(scraper, player_id, player_slug):
     soup = BeautifulSoup(html, "lxml")
 
     photo = soup.find("img", {"class": "data-header__profile-image"})
-    photo_url = photo.get("src", "") if photo else ""
-    if photo_url.startswith("//"):
-        photo_url = "https:" + photo_url
+    photo_url = pick_image_url(photo)
 
     bio = {}
     for tr in soup.select("table.auflistung tr"):
@@ -345,13 +373,9 @@ def scrape_squad_values(scraper, season):
             player_slug, player_id = parse_tm_profile_href(href)
 
             squad_photo = ""
-            for img in row.find_all("img", src=True):
-                cls = " ".join(img.get("class") or [])
-                if "bilderrahmen" in cls or "data-header" in cls:
-                    squad_photo = img.get("src", "")
-                    break
-            if squad_photo.startswith("//"):
-                squad_photo = "https:" + squad_photo
+            # Usually the player photo is inside the first cell with a "bilderrahmen" wrapper
+            img = row.select_one("td:nth-of-type(2) img") or row.select_one("img.bilderrahmen-fixed") or row.find("img")
+            squad_photo = pick_image_url(img)
 
             rows.append(
                 {
