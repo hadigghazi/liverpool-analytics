@@ -1,0 +1,36 @@
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  flex-shrink: 0;
+}
+
+.dots {
+  display: flex;
+  gap: 4px;
+}
+
+.dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: default;
+}
+
+.w { background: rgba(34,197,94,0.15); color: #22c55e; }
+.d { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.l { background: rgba(239,68,68,0.15); color: #ef4444; }
+.none { background: rgba(255,255,255,0.05); color: var(--text-muted); }
+

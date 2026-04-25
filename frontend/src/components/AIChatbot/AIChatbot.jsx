@@ -1,13 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import styles from './AIChatbot.module.css';
 
+const SUGGESTIONS = [
+  "How was Liverpool's away form?",
+  'Top scorer this season?',
+  'Home vs away goal difference?',
+  'Biggest win of the season?',
+];
+
 export default function AIChatbot() {
   const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      content:
-        "Ask me anything about Liverpool's 2024-25 season — form, tactics, player stats, goals...",
-    },
+    { role: 'assistant', content: "Ask me anything about Liverpool's 2024-25 title-winning season." }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -18,59 +21,49 @@ export default function AIChatbot() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const send = async () => {
-    if (!input.trim() || loading) return;
-    const text = input.trim();
+  const send = async (text) => {
+    const msg = text || input.trim();
+    if (!msg || loading) return;
     setInput('');
-    setMessages((prev) => [...prev, { role: 'user', content: text }]);
+    setMessages(prev => [...prev, { role: 'user', content: msg }]);
     setLoading(true);
-
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify({ message: msg, history }),
       });
       const { reply } = await res.json();
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-      setHistory((prev) =>
-        [...prev, { role: 'user', content: text }, { role: 'assistant', content: reply }].slice(
-          -12
-        )
-      );
+      setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      setHistory(prev => [
+        ...prev,
+        { role: 'user', content: msg },
+        { role: 'assistant', content: reply }
+      ].slice(-12));
     } catch {
-      setMessages((prev) => [...prev, { role: 'assistant', content: 'Sorry, something went wrong.' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Error — please try again.' }]);
     }
     setLoading(false);
   };
 
-  const suggestions = [
-    "How's Liverpool's away form?",
-    'Top scorer this season?',
-    'Last 5 match results?',
-    'Goals scored vs xG?',
-  ];
-
   return (
     <div className={styles.chatbot}>
-      <h2 className={styles.heading}>AI Analyst</h2>
+      <div className={styles.header}>
+        <div className={styles.indicator} />
+        <span className={styles.title}>AI Analyst</span>
+      </div>
+
       <div className={styles.messages}>
         {messages.map((m, i) => (
           <div key={i} className={`${styles.msg} ${styles[m.role]}`}>
-            {m.role === 'assistant' && <span className={styles.avatar}>⚽</span>}
-            <span className={styles.bubble}>{m.content}</span>
+            <p className={styles.text}>{m.content}</p>
           </div>
         ))}
         {loading && (
           <div className={`${styles.msg} ${styles.assistant}`}>
-            <span className={styles.avatar}>⚽</span>
-            <span className={styles.bubble}>
-              <span className={styles.dots}>
-                <span />
-                <span />
-                <span />
-              </span>
-            </span>
+            <p className={styles.text}>
+              <span className={styles.typing}><span/><span/><span/></span>
+            </p>
           </div>
         )}
         <div ref={bottomRef} />
@@ -78,8 +71,8 @@ export default function AIChatbot() {
 
       {messages.length === 1 && (
         <div className={styles.suggestions}>
-          {suggestions.map((s) => (
-            <button key={s} className={styles.suggestion} onClick={() => setInput(s)}>
+          {SUGGESTIONS.map(s => (
+            <button key={s} className={styles.suggestion} onClick={() => send(s)}>
               {s}
             </button>
           ))}
@@ -90,13 +83,17 @@ export default function AIChatbot() {
         <input
           className={styles.input}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && send()}
-          placeholder="Ask about Liverpool..."
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && send()}
+          placeholder="Ask about the season..."
           disabled={loading}
         />
-        <button className={styles.send} onClick={send} disabled={loading || !input.trim()}>
-          Send
+        <button
+          className={styles.send}
+          onClick={() => send()}
+          disabled={loading || !input.trim()}
+        >
+          ↑
         </button>
       </div>
     </div>
