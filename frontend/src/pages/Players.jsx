@@ -3,18 +3,21 @@ import { appSeason } from '../config.js';
 import styles from './Players.module.css';
 
 const COLS = [
-  { key: 'player', label: 'Player', fmt: (v) => v },
-  { key: 'minutes', label: 'Min', fmt: (v) => Math.round(v) },
-  { key: 'goals', label: 'G', fmt: (v) => v },
-  { key: 'assists', label: 'A', fmt: (v) => v },
-  { key: 'goal_contributions', label: 'G+A', fmt: (v) => v },
-  { key: 'xg', label: 'xG', fmt: (v) => (+v).toFixed(1) },
-  { key: 'xag', label: 'xAG', fmt: (v) => (+v).toFixed(1) },
-  { key: 'shot_accuracy', label: 'SoT%', fmt: (v) => (v ? (v * 100).toFixed(0) + '%' : '—') },
-  { key: 'pass_accuracy', label: 'Pass%', fmt: (v) => (v ? (v * 100).toFixed(0) + '%' : '—') },
-  { key: 'key_passes', label: 'KP', fmt: (v) => v },
-  { key: 'tackles', label: 'Tkl', fmt: (v) => v },
-  { key: 'prog_carries', label: 'PrgC', fmt: (v) => v },
+  { key: 'player',            label: 'Player',   fmt: v => v },
+  { key: 'minutes',           label: 'Min',      fmt: v => Math.round(v) },
+  { key: 'goals',             label: 'G',        fmt: v => v },
+  { key: 'assists',           label: 'A',        fmt: v => v },
+  { key: 'goal_contributions',label: 'G+A',      fmt: v => v },
+  { key: 'shots',             label: 'Sh',       fmt: v => v },
+  { key: 'shots_on_tgt',      label: 'SoT',      fmt: v => v },
+  { key: 'shot_accuracy',     label: 'SoT%',     fmt: v => v ? (v*100).toFixed(0)+'%' : '—' },
+  { key: 'tackles',           label: 'Tkl',      fmt: v => v },
+  { key: 'interceptions',     label: 'Int',      fmt: v => v },
+  { key: 'fouls',             label: 'Fls',      fmt: v => v },
+  { key: 'fouled',            label: 'Fld',      fmt: v => v },
+  { key: 'offsides',          label: 'Off',      fmt: v => v },
+  { key: 'yellow_cards',      label: 'YC',       fmt: v => v },
+  { key: 'red_cards',         label: 'RC',       fmt: v => v },
 ];
 
 export default function Players() {
