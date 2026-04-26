@@ -17,9 +17,9 @@ const POSITION_COLORS = {
 };
 
 const VIEWS = [
-  { id: 'teammates', label: 'Teammates', desc: 'edge_played_with (shared seasons at LFC)' },
-  { id: 'transfers', label: 'Transfers', desc: 'edge_transferred_to (this season, player → other club)' },
-  { id: 'season', label: '↔ Season', desc: 'edge_played_in (squad → this season node)' },
+  { id: 'teammates', label: 'Teammates', desc: 'Teammate links: shared seasons in the graph (squad- or all-players set below)' },
+  { id: 'transfers', label: 'Transfers', desc: 'Players → other clubs: full history (not only the year in the filter)' },
+  { id: 'season', label: '↔ Season', desc: 'All seasons in the data—each link is minutes played in that LFC year' },
 ];
 
 function getColor(position, nodeType) {
@@ -101,36 +101,56 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
         direction: e.direction,
         fee_text: e.fee_text,
         fee_eur: e.fee_eur,
+        transfer_season: e.season,
         minutes: e.minutes,
         goals: e.goals,
         assists: e.assists,
       }));
 
     const simNodes = nodes.map(n => ({ ...n }));
+    const nSeason = simNodes.filter(n => n.node_type === 'season').length;
+    const pinOneSeason = viewMode === 'season' && nSeason === 1;
+
     const sim = d3.forceSimulation(simNodes)
+      .velocityDecay(viewMode === 'transfers' ? 0.4 : 0.22)
+      .alphaDecay(viewMode === 'transfers' ? 0.04 : 0.0228)
       .force('link', d3.forceLink(rawLinks).id(d => d.id)
         .distance(d => {
-          if (viewMode === 'season') return Math.min(200, 90 + (d.weight || 0) * 0.12);
-          if (viewMode === 'transfers') return 120;
+          if (viewMode === 'transfers') return 52;
+          if (viewMode === 'season') {
+            if (nSeason > 1) return Math.min(150, 65 + (d.weight || 0) * 0.1);
+            return Math.min(200, 90 + (d.weight || 0) * 0.12);
+          }
           return Math.max(70, 220 - Math.min(120, (d.weight || 1) * 14));
         })
         .strength(d => {
-          if (viewMode === 'season') return 0.12;
-          if (viewMode === 'transfers') return 0.35;
+          if (viewMode === 'transfers') return 0.6;
+          if (viewMode === 'season') return nSeason > 1 ? 0.18 : 0.12;
           return Math.min(0.85, 0.08 + (d.weight || 1) * 0.04);
         }))
       .force('charge', d3.forceManyBody()
-        .strength(d => (d.node_type === 'season' ? -50 : -380)))
+        .strength((d) => {
+          if (d.node_type === 'season') return nSeason > 1 ? -20 : -50;
+          if (d.node_type === 'club' && viewMode === 'transfers') return -55;
+          if (d.node_type === 'club') return -120;
+          if (viewMode === 'transfers') return -130;
+          if (viewMode === 'season' && nSeason > 1) return -200;
+          return -380;
+        }))
       .force('center', d3.forceCenter(W / 2, H / 2))
       .force('collision', d3.forceCollide()
-        .radius(d => {
-          if (d.node_type === 'season') return 42;
-          if (d.node_type === 'club') return 22;
-          return 14 + Math.min(12, (d.goals || 0) * 0.35);
+        .radius((d) => {
+          if (d.node_type === 'season') return 40;
+          if (d.node_type === 'club') {
+            if (viewMode === 'transfers') return 18;
+            return 22;
+          }
+          const b = viewMode === 'transfers' ? 0.18 : 0.35;
+          return 12 + Math.min(12, (d.goals || 0) * b);
         }));
 
     simNodes.forEach((d) => {
-      if (d.node_type === 'season') {
+      if (d.node_type === 'season' && pinOneSeason) {
         d.fx = W / 2;
         d.fy = H / 2;
       }
@@ -159,7 +179,8 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
       .append('title')
       .text((d) => {
         if (d.edge_type === 'TRANSFERRED_TO') {
-          return `${d.direction} · ${formatFee(d)}`;
+          const y = d.transfer_season != null && d.transfer_season !== '' ? ` · ${d.transfer_season}` : '';
+          return `${d.direction} · ${formatFee(d)}${y}`;
         }
         if (d.edge_type === 'PLAYED_IN') {
           return `G ${d.goals ?? 0} · A ${d.assists ?? 0} · ${d.minutes != null ? Math.round(d.minutes) : '—'} min`;
@@ -169,18 +190,18 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
 
     const drag = d3.drag()
       .on('start', (event, d) => {
-        if (d.node_type === 'season') return;
+        if (d.node_type === 'season' && pinOneSeason) return;
         if (!event.active) sim.alphaTarget(0.25).restart();
         d.fx = d.x;
         d.fy = d.y;
       })
       .on('drag', (event, d) => {
-        if (d.node_type === 'season') return;
+        if (d.node_type === 'season' && pinOneSeason) return;
         d.fx = event.x;
         d.fy = event.y;
       })
       .on('end', (event, d) => {
-        if (d.node_type === 'season') return;
+        if (d.node_type === 'season' && pinOneSeason) return;
         if (!event.active) sim.alphaTarget(0);
         d.fx = null;
         d.fy = null;
@@ -190,7 +211,7 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
       .selectAll('g')
       .data(simNodes)
       .join('g')
-      .attr('cursor', d => (d.node_type === 'season' ? 'default' : 'pointer'))
+      .attr('cursor', d => (d.node_type === 'season' && pinOneSeason ? 'default' : 'pointer'))
       .call(drag)
       .on('click', (event, d) => {
         event.stopPropagation();
@@ -351,6 +372,7 @@ function NodePanel({ node, partnerships, loadingP, onClose, viewMode }) {
 
 export default function Graph({ season }) {
   const [viewMode, setViewMode] = useState('teammates');
+  const [graphScope, setGraphScope] = useState('nav');
   const [graphData, setGraphData] = useState({ nodes: [], edges: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -360,13 +382,14 @@ export default function Graph({ season }) {
   const [filter, setFilter] = useState('all');
 
   const urlForView = (v) => {
-    if (v === 'teammates') return `/api/graph/squad-network?season=${encodeURIComponent(season)}`;
-    if (v === 'transfers') return `/api/graph/transfer-network?season=${encodeURIComponent(season)}`;
-    return `/api/graph/player-season-hub?season=${encodeURIComponent(season)}`;
+    if (v === 'season') return '/api/graph/seasons-full-network';
+    const s = graphScope === 'all' ? 'all' : season;
+    if (v === 'teammates') return `/api/graph/squad-network?season=${encodeURIComponent(s || 'all')}`;
+    return `/api/graph/transfer-network?season=${encodeURIComponent(s || 'all')}`;
   };
 
   useEffect(() => {
-    if (!season) return;
+    if (viewMode !== 'season' && !season) return;
     setLoading(true);
     setError('');
     setSelectedNode(null);
@@ -385,7 +408,7 @@ export default function Graph({ season }) {
         setGraphData({ nodes: [], edges: [] });
         setLoading(false);
       });
-  }, [season, viewMode]);
+  }, [season, viewMode, graphScope]);
 
   useEffect(() => {
     if (viewMode !== 'teammates' || !selectedNode?.label || selectedNode?.node_type !== 'player') {
@@ -434,7 +457,9 @@ export default function Graph({ season }) {
         <div className={styles.toolbarLeft}>
           <h1 className={styles.title}>Squad network</h1>
           <p className={styles.subtitle}>
-            {seasonLabel(season)} — {VIEWS.find(v => v.id === viewMode)?.desc}
+            {viewMode === 'season' && 'Full data · '}
+            {viewMode !== 'season' && (graphScope === 'all' ? 'All time · ' : `${seasonLabel(season)} · `)}
+            {VIEWS.find(v => v.id === viewMode)?.desc}
             {unknownCount > 0 && usePositionFilter && (
               <span> · {unknownCount} players with no position (from TM) are hidden by filters — use <strong>All</strong> to see them.</span>
             )}
@@ -454,6 +479,28 @@ export default function Graph({ season }) {
               </button>
             ))}
           </div>
+          {(viewMode === 'teammates' || viewMode === 'transfers') && (
+            <div
+              className={styles.scopeTabs}
+              role="group"
+              aria-label="Graph scope: squad year or all players in dataset"
+            >
+              <button
+                type="button"
+                className={`${styles.scopeTab} ${graphScope === 'nav' ? styles.scopeTabActive : ''}`}
+                onClick={() => setGraphScope('nav')}
+              >
+                This season
+              </button>
+              <button
+                type="button"
+                className={`${styles.scopeTab} ${graphScope === 'all' ? styles.scopeTabActive : ''}`}
+                onClick={() => setGraphScope('all')}
+              >
+                All time
+              </button>
+            </div>
+          )}
           {usePositionFilter && (
             <div className={styles.filters}>
               {['all', 'goalkeeper', 'back', 'midfield', 'winger', 'forward'].map(f => (
