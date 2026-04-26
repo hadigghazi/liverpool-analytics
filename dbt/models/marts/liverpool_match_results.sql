@@ -16,4 +16,4 @@ SELECT
     ROW_NUMBER()
         OVER (PARTITION BY season ORDER BY date)   AS match_number
 FROM {{ ref('stg_matches') }}
-ORDER BY season DESC, date
+-- No final ORDER BY: BQ disallows it on CTAS with partition_by/cluster_by; sort in consumers.

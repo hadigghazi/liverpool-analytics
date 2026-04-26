@@ -20,4 +20,4 @@ SELECT
 FROM {{ ref('stg_player_stats') }}
 WHERE stat_type = 'combined'
   AND minutes > 0
-ORDER BY goals DESC
+-- No final ORDER BY: required for BQ table CTAS with cluster_by on this model.

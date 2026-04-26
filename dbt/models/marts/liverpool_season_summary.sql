@@ -15,4 +15,4 @@ SELECT
 FROM {{ ref('stg_matches') }}
 WHERE result IS NOT NULL
 GROUP BY season
-ORDER BY season DESC
+-- No final ORDER BY: required for BQ table CTAS with cluster_by on this model.

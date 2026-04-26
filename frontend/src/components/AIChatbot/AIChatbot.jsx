@@ -3,14 +3,14 @@ import styles from './AIChatbot.module.css';
 
 const SUGGESTIONS = [
   "How was Liverpool's away form?",
-  'Top scorer this season?',
+  'Who were the top scorers?',
   'Home vs away goal difference?',
-  'Biggest win of the season?',
+  "What was the biggest win?",
 ];
 
 export default function AIChatbot() {
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Ask me anything about Liverpool's 2024-25 title-winning season." }
+    { role: 'assistant', content: "Ask me anything about Liverpool: results, players, and season stats. Answers use your analytics data (current season in the app)." }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);

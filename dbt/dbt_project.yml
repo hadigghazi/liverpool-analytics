@@ -1,14 +1,31 @@
 name: liverpool_analytics
 version: '1.0.0'
+config-version: 2
 profile: liverpool
 
 model-paths: ["models"]
+snapshot-paths: ["snapshots"]
+test-paths: ["tests"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
+# Default: failing tests block the run. Override per test with config(severity="warn").
+tests:
+  liverpool_analytics:
+    +severity: error
+
 models:
   liverpool_analytics:
+    +meta:
+      owner: analytics
     staging:
-      materialized: view
+      +materialized: view
     marts:
-      materialized: table
+      +materialized: table
+
+snapshots:
+  liverpool_analytics:
+    +meta:
+      owner: analytics
+    # BQ: cluster for snapshot key + season (full-refresh or first build only)
+    +cluster_by: ["sk", "season"]

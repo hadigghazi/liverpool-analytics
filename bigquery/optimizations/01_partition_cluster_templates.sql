@@ -1,0 +1,20 @@
+-- BigQuery layout hardening (run manually after reviewing; some changes require table recreation).
+--
+-- Applied migration for raw tables (partition + cluster): `02_migrate_raw_partition_cluster.sql`
+-- New `CREATE TABLE` defaults in `scraper/scrape_liverpool.py` (ensure_tables). Marts: dbt model
+-- `config.partition_by` / `cluster_by` in `dbt/models/marts/schema_marts.yml`.
+--
+-- 1) raw_matches: partition by season (STRING). Native partitioning on STRING is not supported;
+--    add a derived column and recreate, or partition by ingestion_time. Example with season_year INT:
+--    ALTER TABLE ... SET OPTIONS (partition_expiration_days=3650);
+--
+-- 2) Prefer clustering on hot paths:
+--    ALTER TABLE `PROJECT.DATASET.raw_player_stats`
+--    SET OPTIONS (description='clustered for player+season filters');
+--    -- Recreate with: PARTITION BY DATE(_PARTITIONTIME) ... CLUSTER BY player, season
+--
+-- 3) require_partition_filter (only after partitioning exists):
+--    ALTER TABLE `PROJECT.DATASET.raw_matches`
+--    SET OPTIONS (require_partition_filter=TRUE);
+--
+-- statsbomb_shots: add when that table exists; partition by match_date, cluster by player_id, match_id.

@@ -1,4 +1,6 @@
 # scraper/scrape_liverpool.py
+import sys
+import uuid
 import soccerdata as sd
 import pandas as pd
 from bs4 import BeautifulSoup, Comment
@@ -9,6 +11,11 @@ import os, time, random, math
 from pathlib import Path
 from io import StringIO
 from dotenv import load_dotenv
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from common.pipeline_runs import finish_run, start_run  # noqa: E402
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -66,6 +73,9 @@ def ensure_tables():
             home_team STRING, away_team STRING, home_goals INT64,
             away_goals INT64, venue STRING, scraped_at TIMESTAMP
         )
+        PARTITION BY date
+        CLUSTER BY season, game_id
+        OPTIONS (description = "FBref schedule/results; partitioned by match date")
     """).result()
 
     client.query(f"""
@@ -89,6 +99,9 @@ def ensure_tables():
             fouls FLOAT64, fouled FLOAT64, offsides FLOAT64,
             scraped_at TIMESTAMP
         )
+        PARTITION BY DATE(scraped_at)
+        CLUSTER BY season, player, stat_type
+        OPTIONS (description = "FBref player stats; partitioned by scrape date")
     """).result()
 
     client.query(f"""
@@ -349,7 +362,63 @@ def build_player_rows(data, season):
         })
     return rows
 
-def load_to_bq(match_rows, player_rows, season):
+def _merge_matches_incremental(df, season):
+    """MERGE current-season match rows by (season, game_id) instead of truncating the season."""
+    stg = f"_stg_raw_matches_{uuid.uuid4().hex[:12]}"
+    stg_fq = f"{PROJECT}.{DATASET}.{stg}"
+    client.load_table_from_dataframe(
+        df,
+        stg_fq,
+        job_config=LoadJobConfig(write_disposition=WriteDisposition.WRITE_TRUNCATE, autodetect=True),
+    ).result()
+    merge_sql = f"""
+    MERGE `{bq_table('raw_matches')}` AS T
+    USING `{stg_fq}` AS S
+    ON T.season = S.season AND T.game_id = S.game_id
+    WHEN MATCHED THEN UPDATE SET
+      T.date = S.date,
+      T.gameweek = S.gameweek,
+      T.home_team = S.home_team,
+      T.away_team = S.away_team,
+      T.home_goals = S.home_goals,
+      T.away_goals = S.away_goals,
+      T.venue = S.venue,
+      T.scraped_at = S.scraped_at
+    WHEN NOT MATCHED THEN INSERT (
+      game_id, season, date, gameweek, home_team, away_team, home_goals, away_goals, venue, scraped_at
+    ) VALUES (
+      S.game_id, S.season, S.date, S.gameweek, S.home_team, S.away_team, S.home_goals, S.away_goals, S.venue, S.scraped_at
+    )
+    """
+    client.query(merge_sql).result()
+    client.delete_table(stg_fq, not_found_ok=True)
+
+
+def _merge_player_stats_incremental(df, season):
+    stg = f"_stg_raw_player_stats_{uuid.uuid4().hex[:12]}"
+    stg_fq = f"{PROJECT}.{DATASET}.{stg}"
+    client.load_table_from_dataframe(
+        df,
+        stg_fq,
+        job_config=LoadJobConfig(write_disposition=WriteDisposition.WRITE_TRUNCATE, autodetect=True),
+    ).result()
+    cols = [c for c in df.columns if c not in ("season",)]
+    set_parts = [f"T.{c} = S.{c}" for c in cols if c not in ("season", "player", "stat_type")]
+    set_sql = ", ".join(set_parts) if set_parts else "T.scraped_at = S.scraped_at"
+    insert_cols = ", ".join(df.columns)
+    insert_vals = ", ".join([f"S.{c}" for c in df.columns])
+    merge_sql = f"""
+    MERGE `{bq_table('raw_player_stats')}` AS T
+    USING `{stg_fq}` AS S
+    ON T.season = S.season AND T.player = S.player AND T.stat_type = S.stat_type
+    WHEN MATCHED THEN UPDATE SET {set_sql}
+    WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})
+    """
+    client.query(merge_sql).result()
+    client.delete_table(stg_fq, not_found_ok=True)
+
+
+def load_to_bq(match_rows, player_rows, season, incremental=False):
     if match_rows:
         df = pd.DataFrame(match_rows)
         df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
@@ -357,17 +426,18 @@ def load_to_bq(match_rows, player_rows, season):
         df["home_goals"] = pd.to_numeric(df["home_goals"], errors="coerce")
         df["away_goals"] = pd.to_numeric(df["away_goals"], errors="coerce")
 
-        # Delete existing season data first
-        client.query(f"""
-            DELETE FROM `{bq_table('raw_matches')}` WHERE season = '{season}'
-        """).result()
-        time.sleep(2)  # wait for streaming buffer
-
-        client.load_table_from_dataframe(
-            df, bq_table("raw_matches"),
-            job_config=LoadJobConfig(write_disposition=WriteDisposition.WRITE_APPEND)
-        ).result()
-        print(f"    Loaded {len(match_rows)} matches")
+        if incremental:
+            _merge_matches_incremental(df, season)
+        else:
+            client.query(f"""
+                DELETE FROM `{bq_table('raw_matches')}` WHERE season = '{season}'
+            """).result()
+            time.sleep(2)
+            client.load_table_from_dataframe(
+                df, bq_table("raw_matches"),
+                job_config=LoadJobConfig(write_disposition=WriteDisposition.WRITE_APPEND)
+            ).result()
+        print(f"    Loaded {len(match_rows)} matches ({'merge' if incremental else 'replace'})")
 
     if player_rows:
         df = pd.DataFrame(player_rows)
@@ -376,16 +446,18 @@ def load_to_bq(match_rows, player_rows, season):
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        client.query(f"""
-            DELETE FROM `{bq_table('raw_player_stats')}` WHERE season = '{season}'
-        """).result()
-        time.sleep(2)
-
-        client.load_table_from_dataframe(
-            df, bq_table("raw_player_stats"),
-            job_config=LoadJobConfig(write_disposition=WriteDisposition.WRITE_APPEND)
-        ).result()
-        print(f"    Loaded {len(player_rows)} player rows")
+        if incremental:
+            _merge_player_stats_incremental(df, season)
+        else:
+            client.query(f"""
+                DELETE FROM `{bq_table('raw_player_stats')}` WHERE season = '{season}'
+            """).result()
+            time.sleep(2)
+            client.load_table_from_dataframe(
+                df, bq_table("raw_player_stats"),
+                job_config=LoadJobConfig(write_disposition=WriteDisposition.WRITE_APPEND)
+            ).result()
+        print(f"    Loaded {len(player_rows)} player rows ({'merge' if incremental else 'replace'})")
 
 def run(seasons=None, force=False):
     print(f"[{datetime.utcnow()}] Starting multi-season Liverpool scrape...")
@@ -401,12 +473,21 @@ def run(seasons=None, force=False):
     print(f"Seasons to scrape: {seasons}")
     print(f"Already complete: {already_scraped}")
 
+    run_id = None
+    rows_total = 0
+    try:
+        run_id = start_run(client, "fbref_scrape", season=None)
+    except Exception as e:
+        print(f"  (pipeline_runs start skipped: {e})")
+
     # Initialize soccerdata driver once — reuse across all seasons
     print("\nInitializing browser...")
     fbref_sd = sd.FBref(leagues=["ENG-Premier League"], seasons=[current])
     driver = fbref_sd._driver
     print("Browser ready.\n")
 
+    ok = True
+    last_err = None
     for season in seasons:
         is_current = season == current
         is_complete_season = not is_current
@@ -432,7 +513,13 @@ def run(seasons=None, force=False):
             print(f"  Built {len(player_rows)} player rows")
 
             if match_rows or player_rows:
-                load_to_bq(match_rows, player_rows, season)
+                load_to_bq(
+                    match_rows,
+                    player_rows,
+                    season,
+                    incremental=is_current,
+                )
+                rows_total += len(match_rows) + len(player_rows)
                 mark_season_scraped(season, len(match_rows), len(player_rows), is_complete_season)
                 print(f"  ✅ Season {season} done")
             else:
@@ -445,11 +532,25 @@ def run(seasons=None, force=False):
                 time.sleep(delay)
 
         except Exception as e:
+            ok = False
+            last_err = str(e)
             print(f"  ❌ Error scraping {season}: {e}")
             import traceback
             traceback.print_exc()
             # Continue to next season
             time.sleep(30)
+
+    if run_id:
+        try:
+            finish_run(
+                client,
+                run_id,
+                rows_written=rows_total or None,
+                status="success" if ok else "failed",
+                error_msg=last_err,
+            )
+        except Exception as e:
+            print(f"  (pipeline_runs finish skipped: {e})")
 
     print(f"\n[{datetime.utcnow()}] All done.")
 

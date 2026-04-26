@@ -81,7 +81,6 @@ jobs:
             FRONTEND_URL=https://${{ secrets.DOMAIN }}
             CURRENT_SEASON=${{ secrets.CURRENT_SEASON }}
             VITE_SEASON=${{ secrets.CURRENT_SEASON }}
-            AIRFLOW_SECRET=${{ secrets.AIRFLOW_SECRET }}
             ENVEOF
 
             # Authenticate docker to Artifact Registry
@@ -91,8 +90,6 @@ jobs:
             docker compose pull backend frontend scraper
 
             # Restart services with new images
-            # Note: airflow is managed separately via docker run (not compose)
-            # to avoid container name conflicts
             docker compose up -d backend frontend nginx
 
             # Clean up old images

@@ -43,8 +43,9 @@ router.post('/', async (req, res) => {
       ),
     ]);
 
-    const systemPrompt = `You are an expert Liverpool FC tactical analyst for the 2024-25 Premier League season.
+    const systemPrompt = `You are an expert Liverpool FC analyst. The data below is for one season in the database (season code: ${String(season).trim()}; e.g. 2425 ≈ 2024–25). Answer using ONLY that slice.
 Answer questions using ONLY the data below. Be concise, specific, and reference actual numbers.
+If the user asks about a different year or season that is not in the data, say the assistant only has stats for the season in context and they may need to switch the app's configured season or data to compare other years.
 If asked about something not in the data, say so clearly.
 
 SEASON SUMMARY:
