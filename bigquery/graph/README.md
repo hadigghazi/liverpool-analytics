@@ -44,6 +44,8 @@ cmd /c "bq query --use_legacy_sql=false --location=EU --project_id=liverpool-ana
 
 4. Re-run **`03_create_property_graph.sql`** if you change node/edge table schemas (property graphs are recreated with `OR REPLACE`).
 
+**Not in this graph (yet):** *Player → opponent club* goals (a “scored against” edge) would need a derived table from per-match, per-opponent lineups (e.g. from events or detailed match stats). The app’s Network page instead exposes **played_with**, **transferred_to**, and **played_in** (see the Teammates / Transfers / ↔ Season tabs).
+
 ## Player IDs
 
 `graph_players.player_id` prefers **Transfermarkt `player_id`** from the latest `tm_squad_values` row per name; otherwise **`CAST(ABS(FARM_FINGERPRINT(LOWER(TRIM(name)))) AS STRING)`** so joins stay stable without TM ids.
