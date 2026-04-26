@@ -16,7 +16,15 @@ const POSITION_COLORS = {
   default: '#6b7280',
 };
 
-function getColor(position) {
+const VIEWS = [
+  { id: 'teammates', label: 'Teammates', desc: 'edge_played_with (shared seasons at LFC)' },
+  { id: 'transfers', label: 'Transfers', desc: 'edge_transferred_to (this season, player → other club)' },
+  { id: 'season', label: '↔ Season', desc: 'edge_played_in (squad → this season node)' },
+];
+
+function getColor(position, nodeType) {
+  if (nodeType === 'club') return 'var(--lfc-gold)';
+  if (nodeType === 'season') return '#22c55e';
   const p = position || '';
   for (const [key, color] of Object.entries(POSITION_COLORS)) {
     if (key === 'default') continue;
@@ -30,22 +38,37 @@ function seasonLabel(s) {
   return `20${s.slice(0, 2)}/${s.slice(2)}`;
 }
 
+/** Position strings on TM/FBref vary; match broadly (case-insensitive). */
 function matchesFilter(node, filter) {
   if (filter === 'all') return true;
   const pos = (node.position || '').toLowerCase();
-  if (filter === 'goalkeeper') return pos.includes('goalkeeper');
-  if (filter === 'back') return pos.includes('back') || pos.includes('defence') || pos.includes('defense');
-  if (filter === 'midfield') return pos.includes('midfield');
-  if (filter === 'winger') return pos.includes('winger');
+  if (!pos.trim()) return false;
+  if (filter === 'goalkeeper') {
+    return /goalkeeper|goal-keeper|keeper|torwart|tw| gk|gk\b/.test(pos);
+  }
+  if (filter === 'back') {
+    return /back|defen[cs]e|defender|iv|cb|rb|lb|außenverteidiger|innverteidiger/.test(pos);
+  }
+  if (filter === 'midfield') {
+    return /midfield|midfielder|zentral|mittelfeld|dm|cm|am|zm|defensive mid|central mid|attacking mid/.test(pos);
+  }
+  if (filter === 'winger') {
+    return /winger|flügel|außen| wide|left w|right w|linksaußen|rechtsaußen/.test(pos);
+  }
   if (filter === 'forward') {
-    return pos.includes('forward') || pos.includes('striker') || pos.includes('strike');
+    return /forward|striker|sturm|centre-forward|center-forward|centre forward|stürmer|attack/.test(pos);
   }
   return true;
 }
 
-function ForceGraph({ nodes, edges, onNodeClick, selectedId }) {
+function formatFee(edge) {
+  if (edge.fee_text) return String(edge.fee_text);
+  if (edge.fee_eur != null && edge.fee_eur > 0) return `€${Number(edge.fee_eur).toLocaleString()}`;
+  return '—';
+}
+
+function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
   const svgRef = useRef(null);
-  const simRef = useRef(null);
 
   useEffect(() => {
     if (!nodes.length || !svgRef.current) return;
@@ -61,51 +84,103 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId }) {
 
     svg.call(
       d3.zoom()
-        .scaleExtent([0.25, 4])
+        .scaleExtent([0.2, 4])
         .on('zoom', e => {
           g.attr('transform', e.transform);
         })
     );
 
     const nodeById = new Map(nodes.map(n => [n.id, { ...n }]));
-    const links = edges
+    const rawLinks = edges
       .filter(e => nodeById.has(e.source) && nodeById.has(e.target))
       .map(e => ({
         source: e.source,
         target: e.target,
-        weight: Number(e.weight) || 1,
+        weight: Number(e.weight) != null ? Number(e.weight) : 1,
+        edge_type: e.edge_type,
+        direction: e.direction,
+        fee_text: e.fee_text,
+        fee_eur: e.fee_eur,
+        minutes: e.minutes,
+        goals: e.goals,
+        assists: e.assists,
       }));
 
     const simNodes = nodes.map(n => ({ ...n }));
     const sim = d3.forceSimulation(simNodes)
-      .force('link', d3.forceLink(links).id(d => d.id)
-        .distance(d => Math.max(70, 220 - Math.min(120, (d.weight || 1) * 14)))
-        .strength(d => Math.min(0.85, 0.08 + (d.weight || 1) * 0.04)))
-      .force('charge', d3.forceManyBody().strength(-380))
+      .force('link', d3.forceLink(rawLinks).id(d => d.id)
+        .distance(d => {
+          if (viewMode === 'season') return Math.min(200, 90 + (d.weight || 0) * 0.12);
+          if (viewMode === 'transfers') return 120;
+          return Math.max(70, 220 - Math.min(120, (d.weight || 1) * 14));
+        })
+        .strength(d => {
+          if (viewMode === 'season') return 0.12;
+          if (viewMode === 'transfers') return 0.35;
+          return Math.min(0.85, 0.08 + (d.weight || 1) * 0.04);
+        }))
+      .force('charge', d3.forceManyBody()
+        .strength(d => (d.node_type === 'season' ? -50 : -380)))
       .force('center', d3.forceCenter(W / 2, H / 2))
-      .force('collision', d3.forceCollide().radius(d => 14 + Math.min(12, (d.goals || 0) * 0.35)));
+      .force('collision', d3.forceCollide()
+        .radius(d => {
+          if (d.node_type === 'season') return 42;
+          if (d.node_type === 'club') return 22;
+          return 14 + Math.min(12, (d.goals || 0) * 0.35);
+        }));
 
-    simRef.current = sim;
+    simNodes.forEach((d) => {
+      if (d.node_type === 'season') {
+        d.fx = W / 2;
+        d.fy = H / 2;
+      }
+    });
 
-    const link = g.append('g')
-      .attr('stroke', 'rgba(255,255,255,0.08)')
-      .attr('stroke-opacity', 0.75)
+    const linkLines = g.append('g')
+      .attr('stroke-linecap', 'round')
       .selectAll('line')
-      .data(links)
+      .data(rawLinks)
       .join('line')
-      .attr('stroke-width', d => Math.min(5, 0.6 + Math.sqrt(d.weight || 1)));
+      .attr('stroke', (d) => {
+        if (d.edge_type === 'TRANSFERRED_TO') {
+          return (d.direction === 'in' || String(d.direction).toLowerCase() === 'in') ? '#22c55e' : '#ef4444';
+        }
+        if (d.edge_type === 'PLAYED_IN') return 'rgba(34,197,94,0.25)';
+        return 'rgba(255,255,255,0.08)';
+      })
+      .attr('stroke-opacity', 0.85)
+      .attr('stroke-dasharray', d => (d.edge_type === 'TRANSFERRED_TO' ? '4 3' : null))
+      .attr('stroke-width', d => {
+        if (d.edge_type === 'PLAYED_IN') return Math.max(0.5, 0.4 + (Number(d.minutes) || 0) / 600);
+        if (d.edge_type === 'TRANSFERRED_TO') return 1.2;
+        return Math.min(5, 0.6 + Math.sqrt(d.weight || 1));
+      });
+    linkLines
+      .append('title')
+      .text((d) => {
+        if (d.edge_type === 'TRANSFERRED_TO') {
+          return `${d.direction} · ${formatFee(d)}`;
+        }
+        if (d.edge_type === 'PLAYED_IN') {
+          return `G ${d.goals ?? 0} · A ${d.assists ?? 0} · ${d.minutes != null ? Math.round(d.minutes) : '—'} min`;
+        }
+        return `Shared seasons: ${d.weight ?? ''}`;
+      });
 
     const drag = d3.drag()
       .on('start', (event, d) => {
+        if (d.node_type === 'season') return;
         if (!event.active) sim.alphaTarget(0.25).restart();
         d.fx = d.x;
         d.fy = d.y;
       })
       .on('drag', (event, d) => {
+        if (d.node_type === 'season') return;
         d.fx = event.x;
         d.fy = event.y;
       })
       .on('end', (event, d) => {
+        if (d.node_type === 'season') return;
         if (!event.active) sim.alphaTarget(0);
         d.fx = null;
         d.fy = null;
@@ -115,38 +190,75 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId }) {
       .selectAll('g')
       .data(simNodes)
       .join('g')
-      .attr('cursor', 'pointer')
+      .attr('cursor', d => (d.node_type === 'season' ? 'default' : 'pointer'))
       .call(drag)
       .on('click', (event, d) => {
         event.stopPropagation();
+        if (d.node_type === 'season') return;
         onNodeClick(d);
       });
 
-    node.append('circle')
+    node
+      .filter(d => d.node_type !== 'club' && d.node_type !== 'season')
+      .append('circle')
       .attr('r', d => {
         const base = 12;
         const gBonus = Math.min(10, (Number(d.goals) || 0) * 0.35);
         return base + gBonus;
       })
-      .attr('fill', d => getColor(d.position))
+      .attr('fill', d => getColor(d.position, d.node_type))
       .attr('fill-opacity', 0.88)
       .attr('stroke', d => (d.id === selectedId ? '#ffffff' : 'rgba(255,255,255,0.18)'))
       .attr('stroke-width', d => (d.id === selectedId ? 2.2 : 1));
 
+    node
+      .filter(d => d.node_type === 'club')
+      .append('rect')
+      .attr('x', -16)
+      .attr('y', -16)
+      .attr('width', 32)
+      .attr('height', 32)
+      .attr('rx', 4)
+      .attr('fill', 'rgba(246, 199, 0, 0.2)')
+      .attr('stroke', 'var(--lfc-gold)')
+      .attr('stroke-width', d => (d.id === selectedId ? 2.5 : 1.2));
+
+    node
+      .filter(d => d.node_type === 'season')
+      .append('circle')
+      .attr('r', 38)
+      .attr('fill', 'rgba(34, 197, 94, 0.12)')
+      .attr('stroke', '#22c55e')
+      .attr('stroke-width', 2);
+
     node.append('text')
       .text(d => {
+        if (d.node_type === 'club' && d.label) {
+          return d.label.length > 10 ? `${d.label.slice(0, 9)}…` : d.label;
+        }
+        if (d.node_type === 'season') return 'Season';
         const parts = (d.label || d.id || '').split(' ');
         return parts.length ? parts[parts.length - 1] : '';
       })
       .attr('text-anchor', 'middle')
-      .attr('dy', '0.35em')
-      .attr('fill', '#fff')
-      .attr('font-size', 9)
+      .attr('dy', d => (d.node_type === 'season' ? '-6' : '0.35em'))
+      .attr('fill', d => (d.node_type === 'season' ? '#a7f3d0' : '#fff'))
+      .attr('font-size', d => (d.node_type === 'season' ? 10 : 9))
       .attr('font-weight', 600)
       .attr('pointer-events', 'none');
 
+    node
+      .filter(d => d.node_type === 'season' && d.label)
+      .append('text')
+      .text(d => d.label)
+      .attr('text-anchor', 'middle')
+      .attr('dy', '0.5em')
+      .attr('fill', 'var(--text-muted)')
+      .attr('font-size', 9)
+      .attr('pointer-events', 'none');
+
     sim.on('tick', () => {
-      link
+      linkLines
         .attr('x1', d => d.source.x)
         .attr('y1', d => d.source.y)
         .attr('x2', d => d.target.x)
@@ -157,13 +269,30 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId }) {
     return () => {
       sim.stop();
     };
-  }, [nodes, edges, selectedId, onNodeClick]);
+  }, [nodes, edges, selectedId, onNodeClick, viewMode]);
 
   return <svg ref={svgRef} className={styles.svg} />;
 }
 
-function NodePanel({ node, partnerships, loadingP, onClose }) {
+function NodePanel({ node, partnerships, loadingP, onClose, viewMode }) {
   if (!node) return null;
+  if (node.node_type === 'club') {
+    return (
+      <div className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <div>
+            <h3 className={styles.panelName}>{node.label}</h3>
+            <p className={styles.panelPos}>Other club (transfer graph)</p>
+          </div>
+          <button type="button" className={styles.panelClose} onClick={onClose} aria-label="Close">×</button>
+        </div>
+        <p className={styles.stats}>Clubs in this view come from <code>edge_transferred_to</code>.</p>
+      </div>
+    );
+  }
+  if (node.node_type === 'season') {
+    return null;
+  }
   return (
     <div className={styles.panel}>
       <div className={styles.panelHeader}>
@@ -193,24 +322,35 @@ function NodePanel({ node, partnerships, loadingP, onClose }) {
           </div>
         )}
       </div>
-      <p className={styles.panelSectionTitle}>Partners (shared seasons)</p>
-      {loadingP ? (
-        <p className={styles.stats}>Loading…</p>
-      ) : partnerships.length === 0 ? (
-        <p className={styles.stats}>No partnership rows (run graph populate SQL).</p>
-      ) : (
-        partnerships.slice(0, 8).map((p, i) => (
-          <div key={`${p.partner_name}-${i}`} className={styles.partnership}>
-            <span className={styles.partnerName} title={p.partner_name}>{p.partner_name}</span>
-            <span className={styles.partnerSeasons}>{p.shared_seasons} szns</span>
-          </div>
-        ))
+      {viewMode === 'teammates' && (
+        <>
+          <p className={styles.panelSectionTitle}>Top partnership overlap</p>
+          {loadingP ? (
+            <p className={styles.stats}>Loading…</p>
+          ) : partnerships.length === 0 ? (
+            <p className={styles.stats}>No partner rows (refresh graph in BigQuery if empty).</p>
+          ) : (
+            partnerships.slice(0, 8).map((p, i) => (
+              <div key={`${p.partner_name}-${i}`} className={styles.partnership}>
+                <span className={styles.partnerName} title={p.partner_name}>{p.partner_name}</span>
+                <span className={styles.partnerSeasons}>{p.shared_seasons} szns</span>
+              </div>
+            ))
+          )}
+        </>
+      )}
+      {viewMode === 'transfers' && (
+        <p className={styles.stats}>Player → club links use <code>edge_transferred_to</code> (green in, red out). Hover a line for the fee in the browser tooltip (SVG title).</p>
+      )}
+      {viewMode === 'season' && (
+        <p className={styles.stats}>Spokes use <code>edge_played_in</code> (minutes = link weight).</p>
       )}
     </div>
   );
 }
 
 export default function Graph({ season }) {
+  const [viewMode, setViewMode] = useState('teammates');
   const [graphData, setGraphData] = useState({ nodes: [], edges: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -219,12 +359,18 @@ export default function Graph({ season }) {
   const [loadingP, setLoadingP] = useState(false);
   const [filter, setFilter] = useState('all');
 
+  const urlForView = (v) => {
+    if (v === 'teammates') return `/api/graph/squad-network?season=${encodeURIComponent(season)}`;
+    if (v === 'transfers') return `/api/graph/transfer-network?season=${encodeURIComponent(season)}`;
+    return `/api/graph/player-season-hub?season=${encodeURIComponent(season)}`;
+  };
+
   useEffect(() => {
     if (!season) return;
     setLoading(true);
     setError('');
     setSelectedNode(null);
-    fetch(`/api/graph/squad-network?season=${encodeURIComponent(season)}`)
+    fetch(urlForView(viewMode))
       .then(async r => {
         const body = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(body.error || r.statusText);
@@ -239,10 +385,10 @@ export default function Graph({ season }) {
         setGraphData({ nodes: [], edges: [] });
         setLoading(false);
       });
-  }, [season]);
+  }, [season, viewMode]);
 
   useEffect(() => {
-    if (!selectedNode?.label) {
+    if (viewMode !== 'teammates' || !selectedNode?.label || selectedNode?.node_type !== 'player') {
       setPartnerships([]);
       return;
     }
@@ -264,17 +410,23 @@ export default function Graph({ season }) {
         setPartnerships([]);
         setLoadingP(false);
       });
-  }, [selectedNode]);
+  }, [selectedNode, viewMode]);
 
-  const onNodeClick = useCallback(d => {
+  const onNodeClick = useCallback((d) => {
     setSelectedNode(d);
   }, []);
 
-  const filteredNodes = graphData.nodes.filter(n => matchesFilter(n, filter));
+  const usePositionFilter = viewMode === 'teammates';
+  const filteredNodes = usePositionFilter
+    ? graphData.nodes.filter(n => n.node_type === 'player' && matchesFilter(n, filter))
+    : graphData.nodes;
   const idSet = new Set(filteredNodes.map(n => n.id));
   const filteredEdges = graphData.edges.filter(
     e => idSet.has(e.source) && idSet.has(e.target)
   );
+  const unknownCount = usePositionFilter
+    ? graphData.nodes.filter(n => n.node_type === 'player' && !(n.position || '').trim()).length
+    : 0;
 
   return (
     <div className={styles.page}>
@@ -282,22 +434,40 @@ export default function Graph({ season }) {
         <div className={styles.toolbarLeft}>
           <h1 className={styles.title}>Squad network</h1>
           <p className={styles.subtitle}>
-            {seasonLabel(season)} — Co-season links from <code>edge_played_with</code>. Node size ≈ goals; edge thickness ≈ shared seasons. Drag nodes; scroll to zoom.
+            {seasonLabel(season)} — {VIEWS.find(v => v.id === viewMode)?.desc}
+            {unknownCount > 0 && usePositionFilter && (
+              <span> · {unknownCount} players with no position (from TM) are hidden by filters — use <strong>All</strong> to see them.</span>
+            )}
           </p>
         </div>
         <div className={styles.toolbarRight}>
-          <div className={styles.filters}>
-            {['all', 'goalkeeper', 'back', 'midfield', 'winger', 'forward'].map(f => (
+          <div className={styles.viewTabs} role="tablist" aria-label="Graph relationship type">
+            {VIEWS.map(v => (
               <button
-                key={f}
+                key={v.id}
                 type="button"
-                className={`${styles.filterBtn} ${filter === f ? styles.active : ''}`}
-                onClick={() => setFilter(f)}
+                role="tab"
+                className={`${styles.viewTab} ${viewMode === v.id ? styles.viewTabActive : ''}`}
+                onClick={() => { setViewMode(v.id); setFilter('all'); }}
               >
-                {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                {v.label}
               </button>
             ))}
           </div>
+          {usePositionFilter && (
+            <div className={styles.filters}>
+              {['all', 'goalkeeper', 'back', 'midfield', 'winger', 'forward'].map(f => (
+                <button
+                  key={f}
+                  type="button"
+                  className={`${styles.filterBtn} ${filter === f ? styles.active : ''}`}
+                  onClick={() => setFilter(f)}
+                >
+                  {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -311,18 +481,33 @@ export default function Graph({ season }) {
               {pos}
             </span>
           ))}
+        {viewMode === 'transfers' && (
+          <span className={styles.legendItem}>
+            <span className={styles.legendDot} style={{ background: '#22c55e' }} />
+            In
+            <span className={styles.legendDot} style={{ background: '#ef4444', marginLeft: 6 }} />
+            Out
+          </span>
+        )}
+        {viewMode === 'season' && (
+          <span className={styles.legendItem}>
+            <span className={styles.legendDot} style={{ background: '#22c55e' }} />
+            Thickness ≈ minutes
+          </span>
+        )}
       </div>
 
       <div className={styles.graphContainer}>
         {error && <div className={styles.err}>{error}</div>}
         {loading ? (
-          <div className={styles.loading}>Building network…</div>
+          <div className={styles.loading}>Loading graph…</div>
         ) : (
           <ForceGraph
             nodes={filteredNodes}
             edges={filteredEdges}
             onNodeClick={onNodeClick}
             selectedId={selectedNode?.id}
+            viewMode={viewMode}
           />
         )}
         {selectedNode && (
@@ -331,17 +516,16 @@ export default function Graph({ season }) {
             partnerships={partnerships}
             loadingP={loadingP}
             onClose={() => setSelectedNode(null)}
+            viewMode={viewMode}
           />
         )}
       </div>
 
       {!loading && !error && (
         <div className={styles.stats}>
-          <span>{filteredNodes.length} players</span>
+          <span>{filteredNodes.length} nodes</span>
           <span>·</span>
           <span>{filteredEdges.length} links</span>
-          <span>·</span>
-          <span>Click a node for partnerships (BigQuery Graph)</span>
         </div>
       )}
     </div>
