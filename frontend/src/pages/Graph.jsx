@@ -44,15 +44,17 @@ function linkEndId(x) {
 }
 
 /** 1-hop expansion from name / club / season substring matches. */
-function applySearchSubgraph(nodes, edges, { player, club, season }) {
+function applySearchSubgraph(rawNodes, rawEdges, { player, club, season }) {
+  const n0 = Array.isArray(rawNodes) ? rawNodes : [];
+  const e0 = Array.isArray(rawEdges) ? rawEdges : [];
   const pq = (player || '').trim().toLowerCase();
   const cq = (club || '').trim().toLowerCase();
   const sq = (season || '').trim().toLowerCase();
   if (!pq && !cq && !sq) {
-    return { nodes, edges };
+    return { nodes: n0, edges: e0 };
   }
   const seed = new Set();
-  for (const n of nodes) {
+  for (const n of n0) {
     if (pq && n.node_type === 'player' && (n.label || n.id).toLowerCase().includes(pq)) seed.add(n.id);
     if (cq && n.node_type === 'club' && (n.label || '').toLowerCase().includes(cq)) seed.add(n.id);
     if (
@@ -67,13 +69,13 @@ function applySearchSubgraph(nodes, edges, { player, club, season }) {
     return { nodes: [], edges: [] };
   }
   const vis = new Set(seed);
-  for (const e of edges) {
+  for (const e of e0) {
     if (vis.has(e.source)) vis.add(e.target);
     if (vis.has(e.target)) vis.add(e.source);
   }
   return {
-    nodes: nodes.filter(n => vis.has(n.id)),
-    edges: edges.filter(e => vis.has(e.source) && vis.has(e.target)),
+    nodes: n0.filter(n => vis.has(n.id)),
+    edges: e0.filter(e => vis.has(e.source) && vis.has(e.target)),
   };
 }
 
@@ -115,7 +117,9 @@ function ForceGraph({ nodes, edges, onNodeClick, onBackgroundClick, selectedId, 
   onBackgroundClickRef.current = onBackgroundClick;
 
   useEffect(() => {
-    if (!nodes.length || !svgRef.current) return;
+    const nodeList = Array.isArray(nodes) ? nodes : [];
+    const edgeList = Array.isArray(edges) ? edges : [];
+    if (!nodeList.length || !svgRef.current) return;
 
     const container = svgRef.current.parentElement;
     const W = Math.max(320, container?.offsetWidth || 800);
@@ -140,11 +144,11 @@ function ForceGraph({ nodes, edges, onNodeClick, onBackgroundClick, selectedId, 
       .attr('fill', 'transparent')
       .attr('pointer-events', 'all')
       .on('click', (event) => {
-        if (event.target === event.currentTarget) onBackgroundClick?.();
+        if (event.target === event.currentTarget) onBackgroundClickRef.current?.();
       });
 
-    const nodeById = new Map(nodes.map(n => [n.id, { ...n }]));
-    const rawLinks = edges
+    const nodeById = new Map(nodeList.map(n => [n.id, { ...n }]));
+    const rawLinks = edgeList
       .filter(e => nodeById.has(e.source) && nodeById.has(e.target))
       .map(e => ({
         source: e.source,
@@ -160,7 +164,7 @@ function ForceGraph({ nodes, edges, onNodeClick, onBackgroundClick, selectedId, 
         assists: e.assists,
       }));
 
-    const simNodes = nodes.map(n => ({ ...n }));
+    const simNodes = nodeList.map(n => ({ ...n }));
     const nSeason = simNodes.filter(n => n.node_type === 'season').length;
     const pinOneSeason = viewMode === 'season' && nSeason === 1;
 
@@ -310,7 +314,8 @@ function ForceGraph({ nodes, edges, onNodeClick, onBackgroundClick, selectedId, 
     node.append('text')
       .text(d => {
         if (d.node_type === 'club' && d.label) {
-          return d.label.length > 10 ? `${d.label.slice(0, 9)}…` : d.label;
+          const lab = String(d.label);
+          return lab.length > 10 ? `${lab.slice(0, 9)}…` : lab;
         }
         if (d.node_type === 'season') return 'Season';
         const parts = (d.label || d.id || '').split(' ');
@@ -437,10 +442,10 @@ function NodePanel({ node, partnerships, loadingP, onClose, viewMode }) {
           <p className={styles.panelSectionTitle}>Top partnership overlap</p>
           {loadingP ? (
             <p className={styles.stats}>Loading…</p>
-          ) : partnerships.length === 0 ? (
+          ) : (Array.isArray(partnerships) ? partnerships : []).length === 0 ? (
             <p className={styles.stats}>No partner rows (refresh graph in BigQuery if empty).</p>
           ) : (
-            partnerships.slice(0, 8).map((p, i) => (
+            (Array.isArray(partnerships) ? partnerships : []).slice(0, 8).map((p, i) => (
               <div key={`${p.partner_name}-${i}`} className={styles.partnership}>
                 <span className={styles.partnerName} title={p.partner_name}>{p.partner_name}</span>
                 <span className={styles.partnerSeasons}>{p.shared_seasons} szns</span>
@@ -539,29 +544,35 @@ export default function Graph({ season }) {
 
   const usePositionFilter = viewMode === 'teammates';
   const { preNodes, preEdges } = useMemo(() => {
+    const rawN = Array.isArray(graphData?.nodes) ? graphData.nodes : [];
+    const rawE = Array.isArray(graphData?.edges) ? graphData.edges : [];
     if (!usePositionFilter) {
-      return { preNodes: graphData.nodes, preEdges: graphData.edges };
+      return { preNodes: rawN, preEdges: rawE };
     }
-    const preNodes0 = graphData.nodes.filter(
+    const preNodes0 = rawN.filter(
       n => n.node_type === 'player' && matchesFilter(n, filter)
     );
     const preIdSet = new Set(preNodes0.map(n => n.id));
     return {
       preNodes: preNodes0,
-      preEdges: graphData.edges.filter(e => preIdSet.has(e.source) && preIdSet.has(e.target)),
+      preEdges: rawE.filter(e => preIdSet.has(e.source) && preIdSet.has(e.target)),
     };
   }, [graphData, usePositionFilter, filter]);
 
-  const { displayNodes, displayEdges } = useMemo(
-    () => applySearchSubgraph(preNodes, preEdges, { player: playerQ, club: clubQ, season: seasonQ }),
-    [preNodes, preEdges, playerQ, clubQ, seasonQ]
-  );
+  const { displayNodes, displayEdges } = useMemo(() => {
+    const r = applySearchSubgraph(preNodes, preEdges, { player: playerQ, club: clubQ, season: seasonQ });
+    return {
+      displayNodes: r?.nodes ?? [],
+      displayEdges: r?.edges ?? [],
+    };
+  }, [preNodes, preEdges, playerQ, clubQ, seasonQ]);
 
   const focusIds = useMemo(() => {
     if (!selectedNode) return null;
     const id = selectedNode.id;
     const s = new Set([id]);
-    for (const e of displayEdges) {
+    const es = Array.isArray(displayEdges) ? displayEdges : [];
+    for (const e of es) {
       if (e.source === id) s.add(e.target);
       if (e.target === id) s.add(e.source);
     }
@@ -569,7 +580,8 @@ export default function Graph({ season }) {
   }, [selectedNode, displayEdges]);
 
   const unknownCount = usePositionFilter
-    ? graphData.nodes.filter(n => n.node_type === 'player' && !(n.position || '').trim()).length
+    ? (Array.isArray(graphData?.nodes) ? graphData.nodes : [])
+      .filter(n => n.node_type === 'player' && !(n.position || '').trim()).length
     : 0;
 
   return (
