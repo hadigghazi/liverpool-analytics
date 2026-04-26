@@ -22,6 +22,13 @@ function normalizeUrl(url) {
   return s;
 }
 
+function tmPortraitUrl(playerId) {
+  const pid = String(playerId || '').trim();
+  if (!pid) return '';
+  // This is a stable pattern used by TM/CDN for profile portraits.
+  return `https://img.a.transfermarkt.technology/portrait/header/${encodeURIComponent(pid)}.jpg`;
+}
+
 function runTmProfileScrape(playerId, playerSlug, playerName) {
   const script =
     process.env.TM_SCRAPER_SCRIPT ||
@@ -111,9 +118,29 @@ router.get('/:playerName', async (req, res) => {
             { season, like }
           );
 
-    const tm = fuzzyRows[0] || null;
+    let tm = fuzzyRows[0] || null;
+    let tmSeasonUsed = season;
+
+    // If TM squad scrape for this season is missing/partial, fall back to any season.
     if (!tm) {
-      return res.status(404).json({ error: 'Player not found in Transfermarkt squad data for this season' });
+      const anySeasonRows = await query(
+        `
+        SELECT player, player_id, player_slug, position, nationality, nationality_full,
+               age, market_value_eur, photo_url, dob, height, foot, contract_expires, season
+        FROM \`${process.env.GCP_PROJECT}.liverpool_analytics.tm_squad_values\`
+        WHERE LOWER(TRIM(player)) = LOWER(TRIM(@exact))
+           OR LOWER(player) LIKE LOWER(@like)
+        ORDER BY season DESC
+        LIMIT 1
+      `,
+        { exact: playerName, like }
+      );
+      tm = anySeasonRows[0] || null;
+      tmSeasonUsed = tm?.season || season;
+    }
+
+    if (!tm) {
+      return res.status(404).json({ error: 'Player not found in Transfermarkt squad data (try re-scraping the season)' });
     }
 
     const pid = tm.player_id || '';
@@ -170,7 +197,16 @@ router.get('/:playerName', async (req, res) => {
       ...tm,
       player: tm.player,
       market_value_eur: tm.market_value_eur,
-      photo_url: normalizeUrl((cached && cached.photo_url) || tm.photo_url || ''),
+      photo_url: (() => {
+        const fromCache = normalizeUrl((cached && cached.photo_url) || tm.photo_url || '');
+        // If TM returns a placeholder / blocked image, always prefer portrait-by-id.
+        const portrait = tmPortraitUrl(pid);
+        if (!fromCache) return portrait;
+        const lc = fromCache.toLowerCase();
+        if (lc.includes('no_picture') || lc.includes('nopicture') || lc.includes('default')) return portrait;
+        // Sometimes TM returns a generic "blocked" icon from the CDN; portrait still works.
+        return fromCache;
+      })(),
       height: (cached && cached.height) || tm.height || '',
       foot: (cached && cached.foot) || tm.foot || '',
       contract_expires: (cached && cached.contract_expires) || tm.contract_expires || '',
@@ -218,6 +254,7 @@ router.get('/:playerName', async (req, res) => {
       transfers: transferRows,
       tmProfileExtras: { mvHistory },
       tmCache: { hit: Boolean(cached), player_id: pid || null },
+      tmSeasonUsed,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
