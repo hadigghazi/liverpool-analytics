@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
 import styles from './Graph.module.css';
 
@@ -38,6 +38,45 @@ function seasonLabel(s) {
   return `20${s.slice(0, 2)}/${s.slice(2)}`;
 }
 
+function linkEndId(x) {
+  if (x != null && typeof x === 'object' && 'id' in x) return x.id;
+  return x;
+}
+
+/** 1-hop expansion from name / club / season substring matches. */
+function applySearchSubgraph(nodes, edges, { player, club, season }) {
+  const pq = (player || '').trim().toLowerCase();
+  const cq = (club || '').trim().toLowerCase();
+  const sq = (season || '').trim().toLowerCase();
+  if (!pq && !cq && !sq) {
+    return { nodes, edges };
+  }
+  const seed = new Set();
+  for (const n of nodes) {
+    if (pq && n.node_type === 'player' && (n.label || n.id).toLowerCase().includes(pq)) seed.add(n.id);
+    if (cq && n.node_type === 'club' && (n.label || '').toLowerCase().includes(cq)) seed.add(n.id);
+    if (
+      sq &&
+      n.node_type === 'season' &&
+      (String(n.id).toLowerCase().includes(sq) || (n.label || '').toLowerCase().includes(sq))
+    ) {
+      seed.add(n.id);
+    }
+  }
+  if (seed.size === 0) {
+    return { nodes: [], edges: [] };
+  }
+  const vis = new Set(seed);
+  for (const e of edges) {
+    if (vis.has(e.source)) vis.add(e.target);
+    if (vis.has(e.target)) vis.add(e.source);
+  }
+  return {
+    nodes: nodes.filter(n => vis.has(n.id)),
+    edges: edges.filter(e => vis.has(e.source) && vis.has(e.target)),
+  };
+}
+
 /** Position strings on TM/FBref vary; match broadly (case-insensitive). */
 function matchesFilter(node, filter) {
   if (filter === 'all') return true;
@@ -67,8 +106,13 @@ function formatFee(edge) {
   return '—';
 }
 
-function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
+function ForceGraph({ nodes, edges, onNodeClick, onBackgroundClick, selectedId, viewMode, focusIds }) {
   const svgRef = useRef(null);
+  const d3ref = useRef({ linkLines: null, node: null, sim: null, pinOneSeason: false });
+  const onNodeClickRef = useRef(onNodeClick);
+  const onBackgroundClickRef = useRef(onBackgroundClick);
+  onNodeClickRef.current = onNodeClick;
+  onBackgroundClickRef.current = onBackgroundClick;
 
   useEffect(() => {
     if (!nodes.length || !svgRef.current) return;
@@ -89,6 +133,15 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
           g.attr('transform', e.transform);
         })
     );
+
+    g.append('rect')
+      .attr('width', W)
+      .attr('height', H)
+      .attr('fill', 'transparent')
+      .attr('pointer-events', 'all')
+      .on('click', (event) => {
+        if (event.target === event.currentTarget) onBackgroundClick?.();
+      });
 
     const nodeById = new Map(nodes.map(n => [n.id, { ...n }]));
     const rawLinks = edges
@@ -157,6 +210,7 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
     });
 
     const linkLines = g.append('g')
+      .attr('class', 'graph-links')
       .attr('stroke-linecap', 'round')
       .selectAll('line')
       .data(rawLinks)
@@ -165,7 +219,7 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
         if (d.edge_type === 'TRANSFERRED_TO') {
           return (d.direction === 'in' || String(d.direction).toLowerCase() === 'in') ? '#22c55e' : '#ef4444';
         }
-        if (d.edge_type === 'PLAYED_IN') return 'rgba(34,197,94,0.25)';
+        if (d.edge_type === 'PLAYED_IN') return 'rgba(34,197,94,0.45)';
         return 'rgba(255,255,255,0.08)';
       })
       .attr('stroke-opacity', 0.85)
@@ -203,20 +257,21 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
       .on('end', (event, d) => {
         if (d.node_type === 'season' && pinOneSeason) return;
         if (!event.active) sim.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
+        d.fx = d.x;
+        d.fy = d.y;
       });
 
     const node = g.append('g')
+      .attr('class', 'graph-nodes')
       .selectAll('g')
       .data(simNodes)
       .join('g')
-      .attr('cursor', d => (d.node_type === 'season' && pinOneSeason ? 'default' : 'pointer'))
+      .attr('cursor', d => (d.node_type === 'season' && pinOneSeason ? 'default' : 'move'))
       .call(drag)
       .on('click', (event, d) => {
         event.stopPropagation();
         if (d.node_type === 'season') return;
-        onNodeClick(d);
+        onNodeClickRef.current(d);
       });
 
     node
@@ -229,8 +284,8 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
       })
       .attr('fill', d => getColor(d.position, d.node_type))
       .attr('fill-opacity', 0.88)
-      .attr('stroke', d => (d.id === selectedId ? '#ffffff' : 'rgba(255,255,255,0.18)'))
-      .attr('stroke-width', d => (d.id === selectedId ? 2.2 : 1));
+      .attr('stroke', 'rgba(255,255,255,0.18)')
+      .attr('stroke-width', 1);
 
     node
       .filter(d => d.node_type === 'club')
@@ -242,7 +297,7 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
       .attr('rx', 4)
       .attr('fill', 'rgba(246, 199, 0, 0.2)')
       .attr('stroke', 'var(--lfc-gold)')
-      .attr('stroke-width', d => (d.id === selectedId ? 2.5 : 1.2));
+      .attr('stroke-width', 1.2);
 
     node
       .filter(d => d.node_type === 'season')
@@ -278,6 +333,8 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
       .attr('font-size', 9)
       .attr('pointer-events', 'none');
 
+    d3ref.current = { linkLines, node, sim, pinOneSeason };
+
     sim.on('tick', () => {
       linkLines
         .attr('x1', d => d.source.x)
@@ -289,8 +346,40 @@ function ForceGraph({ nodes, edges, onNodeClick, selectedId, viewMode }) {
 
     return () => {
       sim.stop();
+      d3ref.current = { linkLines: null, node: null, sim: null, pinOneSeason: false };
     };
-  }, [nodes, edges, selectedId, onNodeClick, viewMode]);
+  }, [nodes, edges, viewMode]);
+
+  useEffect(() => {
+    const { linkLines, node, pinOneSeason } = d3ref.current;
+    if (!linkLines || !node) return;
+    const focus = focusIds;
+
+    const linkOpacity = (d) => {
+      if (!focus) return 1;
+      const a = linkEndId(d.source);
+      const b = linkEndId(d.target);
+      return focus.has(a) && focus.has(b) ? 1 : 0.07;
+    };
+
+    linkLines.attr('opacity', linkOpacity);
+
+    node
+      .attr('opacity', (d) => {
+        if (d.node_type === 'season' && pinOneSeason) return 1;
+        if (!focus) return 1;
+        return focus.has(d.id) ? 1 : 0.1;
+      })
+      .each(function (d) {
+        const g = d3.select(this);
+        g.select('circle, rect')
+          .attr('stroke', () => (d.id === selectedId ? '#ffffff' : (d.node_type === 'club' ? 'var(--lfc-gold)' : 'rgba(255,255,255,0.18)')))
+          .attr('stroke-width', () => {
+            if (d.id === selectedId) return d.node_type === 'club' ? 2.5 : 2.2;
+            return d.node_type === 'club' ? 1.2 : 1;
+          });
+      });
+  }, [selectedId, focusIds, nodes]);
 
   return <svg ref={svgRef} className={styles.svg} />;
 }
@@ -380,6 +469,9 @@ export default function Graph({ season }) {
   const [partnerships, setPartnerships] = useState([]);
   const [loadingP, setLoadingP] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [playerQ, setPlayerQ] = useState('');
+  const [clubQ, setClubQ] = useState('');
+  const [seasonQ, setSeasonQ] = useState('');
 
   const urlForView = (v) => {
     if (v === 'season') return '/api/graph/seasons-full-network';
@@ -389,10 +481,13 @@ export default function Graph({ season }) {
   };
 
   useEffect(() => {
+    setSelectedNode(null);
+  }, [season, viewMode, graphScope]);
+
+  useEffect(() => {
     if (viewMode !== 'season' && !season) return;
     setLoading(true);
     setError('');
-    setSelectedNode(null);
     fetch(urlForView(viewMode))
       .then(async r => {
         const body = await r.json().catch(() => ({}));
@@ -438,15 +533,41 @@ export default function Graph({ season }) {
   const onNodeClick = useCallback((d) => {
     setSelectedNode(d);
   }, []);
+  const onGraphBackground = useCallback(() => {
+    setSelectedNode(null);
+  }, []);
 
   const usePositionFilter = viewMode === 'teammates';
-  const filteredNodes = usePositionFilter
-    ? graphData.nodes.filter(n => n.node_type === 'player' && matchesFilter(n, filter))
-    : graphData.nodes;
-  const idSet = new Set(filteredNodes.map(n => n.id));
-  const filteredEdges = graphData.edges.filter(
-    e => idSet.has(e.source) && idSet.has(e.target)
+  const { preNodes, preEdges } = useMemo(() => {
+    if (!usePositionFilter) {
+      return { preNodes: graphData.nodes, preEdges: graphData.edges };
+    }
+    const preNodes0 = graphData.nodes.filter(
+      n => n.node_type === 'player' && matchesFilter(n, filter)
+    );
+    const preIdSet = new Set(preNodes0.map(n => n.id));
+    return {
+      preNodes: preNodes0,
+      preEdges: graphData.edges.filter(e => preIdSet.has(e.source) && preIdSet.has(e.target)),
+    };
+  }, [graphData, usePositionFilter, filter]);
+
+  const { displayNodes, displayEdges } = useMemo(
+    () => applySearchSubgraph(preNodes, preEdges, { player: playerQ, club: clubQ, season: seasonQ }),
+    [preNodes, preEdges, playerQ, clubQ, seasonQ]
   );
+
+  const focusIds = useMemo(() => {
+    if (!selectedNode) return null;
+    const id = selectedNode.id;
+    const s = new Set([id]);
+    for (const e of displayEdges) {
+      if (e.source === id) s.add(e.target);
+      if (e.target === id) s.add(e.source);
+    }
+    return s;
+  }, [selectedNode, displayEdges]);
+
   const unknownCount = usePositionFilter
     ? graphData.nodes.filter(n => n.node_type === 'player' && !(n.position || '').trim()).length
     : 0;
@@ -473,7 +594,13 @@ export default function Graph({ season }) {
                 type="button"
                 role="tab"
                 className={`${styles.viewTab} ${viewMode === v.id ? styles.viewTabActive : ''}`}
-                onClick={() => { setViewMode(v.id); setFilter('all'); }}
+                onClick={() => {
+                  setViewMode(v.id);
+                  setFilter('all');
+                  setPlayerQ('');
+                  setClubQ('');
+                  setSeasonQ('');
+                }}
               >
                 {v.label}
               </button>
@@ -544,17 +671,62 @@ export default function Graph({ season }) {
         )}
       </div>
 
+      <div className={styles.searchRow} aria-label="Narrow the graph by name">
+        <label>
+          <span>Player</span>
+          <input
+            className={styles.searchField}
+            value={playerQ}
+            onChange={e => setPlayerQ(e.target.value)}
+            placeholder="Filter by player name"
+            type="search"
+            autoComplete="off"
+            spellCheck="false"
+          />
+        </label>
+        {(viewMode === 'transfers') && (
+          <label>
+            <span>Club</span>
+            <input
+              className={styles.searchField}
+              value={clubQ}
+              onChange={e => setClubQ(e.target.value)}
+              placeholder="e.g. Dortmund, Leipzig"
+              type="search"
+              autoComplete="off"
+              spellCheck="false"
+            />
+          </label>
+        )}
+        {viewMode === 'season' && (
+          <label>
+            <span>Season</span>
+            <input
+              className={styles.searchField}
+              value={seasonQ}
+              onChange={e => setSeasonQ(e.target.value)}
+              placeholder="Code or label (e.g. 25/26, 2324)"
+              type="search"
+              autoComplete="off"
+              spellCheck="false"
+            />
+          </label>
+        )}
+      </div>
+
       <div className={styles.graphContainer}>
         {error && <div className={styles.err}>{error}</div>}
         {loading ? (
           <div className={styles.loading}>Loading graph…</div>
         ) : (
           <ForceGraph
-            nodes={filteredNodes}
-            edges={filteredEdges}
+            nodes={displayNodes}
+            edges={displayEdges}
             onNodeClick={onNodeClick}
+            onBackgroundClick={onGraphBackground}
             selectedId={selectedNode?.id}
             viewMode={viewMode}
+            focusIds={focusIds}
           />
         )}
         {selectedNode && (
@@ -570,9 +742,9 @@ export default function Graph({ season }) {
 
       {!loading && !error && (
         <div className={styles.stats}>
-          <span>{filteredNodes.length} nodes</span>
+          <span>{displayNodes.length} nodes</span>
           <span>·</span>
-          <span>{filteredEdges.length} links</span>
+          <span>{displayEdges.length} links</span>
         </div>
       )}
     </div>
