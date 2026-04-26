@@ -13,5 +13,5 @@ SELECT
 FROM `liverpool-analytics.liverpool_analytics.tm_squad_values` s
 WHERE market_value_eur IS NOT NULL
 GROUP BY season
-ORDER BY season
+-- No final ORDER BY: required for BQ table CTAS with cluster_by on this model.
 

@@ -1,0 +1,39 @@
+version: 2
+
+sources:
+  - name: liverpool_ops
+    description: |
+      **Raw and operational** tables in BigQuery loaded by services outside dbt: FBref
+      `scrape_liverpool` (match + player tables), Transfermarkt `scrape_tm`, and
+      operational logs (`pipeline_runs` may exist in the same dataset). dbt       only reads
+      these sources; ETL and incremental MERGEs live in Python. Lineage: scrapers
+      → BQ → dbt marts.
+    config:
+      meta:
+        system_of_record: python_etl
+    database: "{{ env_var('GCP_PROJECT', 'liverpool-analytics') }}"
+    schema: liverpool_analytics
+    tables:
+      - name: raw_matches
+        description: FBref schedule, scores, and venue; season-level replaces or current-season MERGE in scraper.
+      - name: raw_player_stats
+        description: FBref player stat rows per season.
+      - name: scraped_seasons
+        description: One row per season scrape; used for freshness and completeness.
+        config:
+          loaded_at_field: scraped_at
+          freshness:
+            warn_after: { count: 10, period: day }
+            error_after: { count: 20, period: day }
+      - name: tm_squad_values
+        description: Transfermarkt squad list and market values per season.
+        config:
+          loaded_at_field: scraped_at
+          freshness:
+            warn_after: { count: 14, period: day }
+      - name: tm_transfers
+        description: Transfermarkt transfer rows.
+        config:
+          loaded_at_field: scraped_at
+          freshness:
+            warn_after: { count: 14, period: day }

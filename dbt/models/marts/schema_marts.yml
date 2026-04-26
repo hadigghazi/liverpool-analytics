@@ -1,0 +1,170 @@
+version: 2
+
+models:
+  - name: liverpool_player_performance
+    description: |
+      Liverpool player season totals from FBref combined (stat_type) rows.
+      Downstream: transfer balance joins and player value charts.
+    config:
+      meta:
+        domain: performance
+        grain: player-season
+      # BigQuery physical layout: filter by season + player
+      cluster_by: [season, player]
+    columns:
+      - name: season
+        data_tests:
+          - not_null
+      - name: player
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: source('liverpool_ops', 'raw_player_stats')
+                field: player
+              config:
+                severity: warn
+      - name: goals
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 60
+              config:
+                severity: warn
+      - name: assists
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 40
+              config:
+                severity: warn
+      - name: minutes
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 4000
+              config:
+                severity: warn
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season
+              - player
+
+  - name: liverpool_match_results
+    description: |
+      One row per Liverpool PL match, derived from raw_matches. Cumulative points and
+      match order are windowed within each season. Unique fixture identity is
+      season, date, opponent, venue (game_id in raw data is a short, non-unique id).
+    config:
+      meta:
+        domain: matches
+        grain: match
+      # BigQuery: time-travel and queries filter on date; cluster by season + id
+      partition_by:
+        field: date
+        data_type: date
+      cluster_by: [season, game_id]
+    columns:
+      - name: season
+        data_tests:
+          - not_null
+      - name: game_id
+        data_tests:
+          - not_null
+      - name: date
+        data_tests:
+          - not_null
+    # game_id in raw_matches is a short string and can collide; fixture identity = season+date+opponent+venue
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season
+              - date
+              - opponent
+              - venue_type
+
+  - name: liverpool_season_summary
+    description: |
+      One row per season: points, wins, draws, losses, goals for/against from match
+      results (marts on top of marts, no filter on this table in typical API use).
+    config:
+      meta:
+        domain: season
+        grain: season
+      cluster_by: [season]
+    columns:
+      - name: season
+        data_tests:
+          - not_null
+          - unique
+      - name: points
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 120
+              config:
+                severity: warn
+
+  - name: liverpool_squad_value
+    description: |
+      Transfermarkt squad market value rollups: count, mean age, total and average
+      value in EUR, top earner (player name) from tm_squad_values in BigQuery.
+    config:
+      meta:
+        source: transfermarkt
+        grain: season
+      cluster_by: [season]
+    columns:
+      - name: season
+        data_tests:
+          - not_null
+          - unique
+
+  - name: liverpool_transfer_balance
+    description: |
+      Transfer market spend and income by season from tm_transfers, with net
+      and transaction counts. EUR fees where parsed.
+    config:
+      meta:
+        source: transfermarkt
+        grain: season
+      cluster_by: [season]
+    columns:
+      - name: season
+        data_tests:
+          - not_null
+          - unique
+
+  - name: liverpool_player_values
+    description: |
+      Joins TM per-player market values to FBref season performance (minutes, goals, …)
+      for the same season + player label. Use for “value vs output” style views.
+    config:
+      meta:
+        source: marts
+        grain: player-season
+      cluster_by: [season, player]
+    columns:
+      - name: season
+        data_tests:
+          - not_null
+      - name: player
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season
+              - player

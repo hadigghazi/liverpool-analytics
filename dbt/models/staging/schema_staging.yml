@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: stg_matches
+    description: |
+      Normalized `raw_matches` for Liverpool: opponent, LFC goal columns, and result
+      from home/away perspective. Staging is a **view** (lightweight, always current raw).
+  - name: stg_player_stats
+    description: |
+      Normalized `raw_player_stats` filtered to the columns used by the performance mart,
+      with consistent typing for numeric stats.
+    config:
+      meta:
+        grain: player-season

@@ -8,13 +8,19 @@ from google.cloud.bigquery import (
     QueryJobConfig,
     ScalarQueryParameter,
 )
-from datetime import datetime, timezone
+import sys
+from datetime import datetime, timezone, date
 import os, time, random, re, json
 from pathlib import Path
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from common.pipeline_runs import finish_run, start_run  # noqa: E402
 
 PROJECT = os.environ["GCP_PROJECT"]
 DATASET = "liverpool_analytics"
@@ -93,6 +99,21 @@ def ensure_tables():
             agent             STRING,
             mv_history_json   STRING,
             scraped_at        TIMESTAMP
+        )
+    """
+    ).result()
+
+    client.query(
+        f"""
+        CREATE TABLE IF NOT EXISTS `{bq_table('tm_player_value_history')}` (
+          player_id STRING NOT NULL,
+          player STRING,
+          season STRING NOT NULL,
+          market_value_eur INT64,
+          valid_from DATE NOT NULL,
+          valid_to DATE,
+          is_current BOOL NOT NULL,
+          recorded_at TIMESTAMP NOT NULL
         )
     """
     ).result()
@@ -473,9 +494,81 @@ def scrape_transfers(scraper, season):
     return rows
 
 
+def _fetch_squad_mv_map(season):
+    cfg = QueryJobConfig(
+        query_parameters=[ScalarQueryParameter("season", "STRING", season)]
+    )
+    q = f"""
+    SELECT player_id, player, market_value_eur
+    FROM `{bq_table('tm_squad_values')}`
+    WHERE season = @season
+    """
+    return {str(r.player_id): (r.player, r.market_value_eur) for r in client.query(q, job_config=cfg).result()}
+
+
+def _apply_tm_market_value_scd2(season, df, old_map):
+    """Close prior is_current row and insert a new row when TM market value changes."""
+    hist = bq_table("tm_player_value_history")
+    today_d = date.today()
+    now_ts = datetime.now(timezone.utc)
+
+    def qrun(sql, params):
+        client.query(sql, job_config=QueryJobConfig(query_parameters=params)).result()
+
+    for _, row in df.iterrows():
+        pid = str(row.get("player_id") or "").strip()
+        if not pid:
+            continue
+        name = str(row.get("player") or "")
+        raw_nv = row.get("market_value_eur")
+        if pd.isna(raw_nv):
+            continue
+        new_v = int(raw_nv)
+        prev = old_map.get(pid)
+        old_v = None if prev is None else (None if prev[1] is None else int(prev[1]))
+        if old_v is not None and old_v == new_v:
+            continue
+        if old_v is not None:
+            qrun(
+                f"""
+                UPDATE `{hist}` SET valid_to = @vd, is_current = FALSE
+                WHERE player_id = @pid AND season = @sea AND is_current = TRUE
+                """,
+                [
+                    ScalarQueryParameter("vd", "DATE", today_d),
+                    ScalarQueryParameter("pid", "STRING", pid),
+                    ScalarQueryParameter("sea", "STRING", season),
+                ],
+            )
+        qrun(
+            f"""
+            INSERT INTO `{hist}` (
+              player_id, player, season, market_value_eur, valid_from, valid_to, is_current, recorded_at
+            ) VALUES (
+              @pid, @pname, @sea, @mv, @vf, NULL, TRUE, @rec
+            )
+            """,
+            [
+                ScalarQueryParameter("pid", "STRING", pid),
+                ScalarQueryParameter("pname", "STRING", name[:200]),
+                ScalarQueryParameter("sea", "STRING", season),
+                ScalarQueryParameter("mv", "INT64", new_v),
+                ScalarQueryParameter("vf", "DATE", today_d),
+                ScalarQueryParameter("rec", "TIMESTAMP", now_ts),
+            ],
+        )
+
+
 def load_to_bq(table_name, rows, season):
     if not rows:
         return
+
+    old_squad_mv = None
+    if table_name == "tm_squad_values":
+        try:
+            old_squad_mv = _fetch_squad_mv_map(season)
+        except Exception as e:
+            print(f"  (value history: could not read prior squad: {e})")
 
     client.query(
         f"""
@@ -507,10 +600,25 @@ def load_to_bq(table_name, rows, season):
     ).result()
     print(f"  Loaded {len(rows)} rows to {table_name}")
 
+    if table_name == "tm_squad_values" and old_squad_mv is not None:
+        try:
+            _apply_tm_market_value_scd2(season, df, old_squad_mv)
+        except Exception as e:
+            print(f"  (tm_player_value_history SCD2 skipped: {e})")
+
 
 def run(seasons=None):
     print(f"[{datetime.now(timezone.utc)}] Starting Transfermarkt scrape...")
     ensure_tables()
+
+    run_id = None
+    rows_total = 0
+    ok = True
+    last_err = None
+    try:
+        run_id = start_run(client, "transfermarkt_scrape", season=None)
+    except Exception as e:
+        print(f"  (pipeline_runs start skipped: {e})")
 
     if seasons is None:
         from datetime import date
@@ -530,16 +638,38 @@ def run(seasons=None):
     for season in seasons:
         print(f"\n[{season}]")
 
-        squad_rows = scrape_squad_values(scraper, season)
-        load_to_bq("tm_squad_values", squad_rows, season)
+        try:
+            squad_rows = scrape_squad_values(scraper, season)
+            load_to_bq("tm_squad_values", squad_rows, season)
+            rows_total += len(squad_rows)
 
-        transfer_rows = scrape_transfers(scraper, season)
-        load_to_bq("tm_transfers", transfer_rows, season)
+            transfer_rows = scrape_transfers(scraper, season)
+            load_to_bq("tm_transfers", transfer_rows, season)
+            rows_total += len(transfer_rows)
+        except Exception as e:
+            ok = False
+            last_err = str(e)
+            print(f"  ❌ Error on {season}: {e}")
+            import traceback
+
+            traceback.print_exc()
 
         if season != seasons[-1]:
             delay = random.uniform(10, 20)
             print(f"  Waiting {delay:.0f}s...")
             time.sleep(delay)
+
+    if run_id:
+        try:
+            finish_run(
+                client,
+                run_id,
+                rows_written=rows_total or None,
+                status="success" if ok else "failed",
+                error_msg=last_err,
+            )
+        except Exception as e:
+            print(f"  (pipeline_runs finish skipped: {e})")
 
     print(f"\n[{datetime.now(timezone.utc)}] Done.")
 

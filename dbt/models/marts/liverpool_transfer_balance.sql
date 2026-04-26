@@ -14,5 +14,5 @@ SELECT
     ) THEN player END) AS biggest_signing
 FROM `liverpool-analytics.liverpool_analytics.tm_transfers` t
 GROUP BY season
-ORDER BY season DESC
+-- No final ORDER BY: required for BQ table CTAS with cluster_by on this model.
 
