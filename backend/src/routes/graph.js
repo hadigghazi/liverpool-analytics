@@ -152,15 +152,15 @@ router.get('/squad-network', async (req, res) => {
           COALESCE(gp.nationality, '') AS nationality,
           0 AS market_value,
           COALESCE(gp.photo_url, '') AS photo_url,
-          agg.goals,
-          agg.assists,
-          agg.minutes,
+          ag.goals,
+          ag.assists,
+          ag.minutes,
           'player' AS node_type
         FROM ${graphPlayers} gp
         INNER JOIN agg ag ON LOWER(TRIM(ag.player_key)) = LOWER(TRIM(gp.name))
         LEFT JOIN tm_latest_nonempty_position ltm
           ON ltm.player_key = LOWER(TRIM(gp.name))
-        ORDER BY agg.minutes DESC
+        ORDER BY ag.minutes DESC
         `
       );
       const edges = await query(

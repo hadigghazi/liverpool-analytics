@@ -92,6 +92,31 @@
   color: var(--lfc-red);
 }
 
+.searchRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.searchRow label { display: flex; align-items: center; gap: 4px; }
+.searchField {
+  min-width: 0;
+  width: 11rem;
+  max-width: 32vw;
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: var(--font-body);
+}
+.searchField::placeholder { color: var(--text-muted); opacity: 0.8; }
+
 .scopeTabs {
   display: flex;
   gap: 2px;
