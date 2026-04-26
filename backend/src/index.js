@@ -7,6 +7,7 @@ import chatRouter from './routes/chat.js';
 import seasonsRouter from './routes/seasons.js';
 import transfersRouter from './routes/transfers.js';
 import playerProfileRouter from './routes/playerProfile.js';
+import graphRouter from './routes/graph.js';
 
 const app = express();
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
@@ -17,6 +18,7 @@ app.use('/api/players', playersRouter);
 app.use('/api/seasons', seasonsRouter);
 app.use('/api/transfers', transfersRouter);
 app.use('/api/player-profile', playerProfileRouter);
+app.use('/api/graph', graphRouter);
 app.use('/api/chat', chatRouter);
 app.get('/health', (_, res) => res.json({ status: 'ok', ts: new Date() }));
 

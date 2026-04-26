@@ -6,6 +6,7 @@ const TABS = [
   { id: 'defense',   label: 'Defense' },
   { id: 'squad',     label: 'Squad' },
   { id: 'transfers', label: 'Transfers' },
+  { id: 'graph',     label: 'Network' },
 ];
 
 function seasonLabel(s) {
