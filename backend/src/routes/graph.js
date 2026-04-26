@@ -4,6 +4,25 @@ import { defaultSeason } from '../loadEnv.js';
 
 const router = Router();
 
+/**
+ * BigQuery disallows correlated subqueries here; this CTE + JOIN gives the
+ * same “latest non-empty position per player from tm_squad_values” result.
+ */
+function cteLatestTmPosition(squadTable) {
+  return `tm_latest_nonempty_position AS (
+      SELECT player_key, position
+      FROM (
+        SELECT
+          LOWER(TRIM(player)) AS player_key,
+          position,
+          ROW_NUMBER() OVER (PARTITION BY LOWER(TRIM(player)) ORDER BY season DESC) AS rn
+        FROM ${squadTable}
+        WHERE NULLIF(TRIM(position), '') IS NOT NULL
+      ) t
+      WHERE t.rn = 1
+    )`;
+}
+
 function projectTables() {
   const p = process.env.GCP_PROJECT;
   if (!p) throw new Error('GCP_PROJECT is not set');
@@ -108,21 +127,14 @@ router.get('/squad-network', async (req, res) => {
 
     const nodes = await query(
       `
+      WITH ${cteLatestTmPosition(squad)}
       SELECT
         p.player AS id,
         p.player AS label,
         COALESCE(
           NULLIF(TRIM(v.position), ''),
           NULLIF(TRIM(gp.position), ''),
-          (
-            SELECT t2.position
-            FROM ${squad} t2
-            WHERE LOWER(TRIM(t2.player)) = LOWER(TRIM(p.player))
-              AND t2.position IS NOT NULL
-              AND TRIM(t2.position) != ''
-            ORDER BY t2.season DESC
-            LIMIT 1
-          ),
+          ltm.position,
           ''
         ) AS position,
         COALESCE(v.nationality, v.nationality_full, '') AS nationality,
@@ -138,6 +150,8 @@ router.get('/squad-network', async (req, res) => {
        AND v.season = @season
       LEFT JOIN ${graphPlayers} gp
         ON LOWER(TRIM(gp.name)) = LOWER(TRIM(p.player))
+      LEFT JOIN tm_latest_nonempty_position ltm
+        ON ltm.player_key = LOWER(TRIM(p.player))
       WHERE p.season = @season
       ORDER BY p.minutes DESC NULLS LAST
     `,
@@ -183,21 +197,14 @@ router.get('/transfer-network', async (req, res) => {
 
     const playerNodes = await query(
       `
+      WITH ${cteLatestTmPosition(squad)}
       SELECT
         p.player AS id,
         p.player AS label,
         COALESCE(
           NULLIF(TRIM(v.position), ''),
           NULLIF(TRIM(gp.position), ''),
-          (
-            SELECT t2.position
-            FROM ${squad} t2
-            WHERE LOWER(TRIM(t2.player)) = LOWER(TRIM(p.player))
-              AND t2.position IS NOT NULL
-              AND TRIM(t2.position) != ''
-            ORDER BY t2.season DESC
-            LIMIT 1
-          ),
+          ltm.position,
           ''
         ) AS position,
         COALESCE(v.nationality, v.nationality_full, gp.nationality, '') AS nationality,
@@ -212,6 +219,8 @@ router.get('/transfer-network', async (req, res) => {
         ON LOWER(TRIM(v.player)) = LOWER(TRIM(p.player)) AND v.season = @season
       LEFT JOIN ${graphPlayers} gp
         ON LOWER(TRIM(gp.name)) = LOWER(TRIM(p.player))
+      LEFT JOIN tm_latest_nonempty_position ltm
+        ON ltm.player_key = LOWER(TRIM(p.player))
       WHERE p.season = @season
     `,
       { season }
@@ -299,21 +308,14 @@ router.get('/player-season-hub', async (req, res) => {
 
     const playerNodes = await query(
       `
+      WITH ${cteLatestTmPosition(squad)}
       SELECT
         p.player AS id,
         p.player AS label,
         COALESCE(
           NULLIF(TRIM(v.position), ''),
           NULLIF(TRIM(gp.position), ''),
-          (
-            SELECT t2.position
-            FROM ${squad} t2
-            WHERE LOWER(TRIM(t2.player)) = LOWER(TRIM(p.player))
-              AND t2.position IS NOT NULL
-              AND TRIM(t2.position) != ''
-            ORDER BY t2.season DESC
-            LIMIT 1
-          ),
+          ltm.position,
           ''
         ) AS position,
         COALESCE(v.nationality, v.nationality_full, '') AS nationality,
@@ -328,6 +330,8 @@ router.get('/player-season-hub', async (req, res) => {
         ON LOWER(TRIM(v.player)) = LOWER(TRIM(p.player)) AND v.season = @season
       LEFT JOIN ${graphPlayers} gp
         ON LOWER(TRIM(gp.name)) = LOWER(TRIM(p.player))
+      LEFT JOIN tm_latest_nonempty_position ltm
+        ON ltm.player_key = LOWER(TRIM(p.player))
       WHERE p.season = @season
     `,
       { season }
