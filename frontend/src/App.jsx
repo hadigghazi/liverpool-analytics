@@ -4,6 +4,7 @@ import Attack from './pages/Attack.jsx';
 import Defense from './pages/Defense.jsx';
 import Squad from './pages/Squad.jsx';
 import Transfers from './pages/Transfers.jsx';
+import Graph from './pages/Graph.jsx';
 import Nav from './components/Nav/Nav.jsx';
 import { useSeasons } from './hooks/useData.js';
 import styles from './styles/App.module.css';
@@ -22,6 +23,7 @@ export default function App() {
     defense:   <Defense season={activeSeason} />,
     squad:     <Squad season={activeSeason} />,
     transfers: <Transfers season={activeSeason} />,
+    graph:     <Graph season={activeSeason} />,
   };
 
   return (
