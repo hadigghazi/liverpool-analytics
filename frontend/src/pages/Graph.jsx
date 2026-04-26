@@ -389,7 +389,7 @@ function ForceGraph({ nodes, edges, onNodeClick, onBackgroundClick, selectedId, 
   return <svg ref={svgRef} className={styles.svg} />;
 }
 
-function NodePanel({ node, partnerships, loadingP, onClose, viewMode }) {
+function NodePanel({ node, partnerships, loadingP, onClose, viewMode, graphScope }) {
   if (!node) return null;
   if (node.node_type === 'club') {
     return (
@@ -455,7 +455,15 @@ function NodePanel({ node, partnerships, loadingP, onClose, viewMode }) {
         </>
       )}
       {viewMode === 'transfers' && (
-        <p className={styles.stats}>Player → club links use <code>edge_transferred_to</code> (green in, red out). Hover a line for the fee in the browser tooltip (SVG title).</p>
+        <>
+          <p className={styles.stats}>
+            {graphScope === 'all'
+              ? 'Goals, assists, and minutes are Liverpool (FBref) career totals, summed across all seasons in the app.'
+              : 'Goals, assists, and minutes are for the season selected in the app header (this view’s squad).'}
+            {' '}
+            Lines to clubs come from the full Transfermarkt move list for this player, not only one destination—e.g. loans, youth, or in/out moves can all show. Hover a line for season and fee. Green in, red out.
+          </p>
+        </>
       )}
       {viewMode === 'season' && (
         <p className={styles.stats}>Spokes use <code>edge_played_in</code> (minutes = link weight).</p>
@@ -748,6 +756,7 @@ export default function Graph({ season }) {
             loadingP={loadingP}
             onClose={() => setSelectedNode(null)}
             viewMode={viewMode}
+            graphScope={graphScope}
           />
         )}
       </div>
