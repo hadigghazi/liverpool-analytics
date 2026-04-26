@@ -260,6 +260,15 @@ router.get('/transfer-network', async (req, res) => {
         `
         WITH ${cteLatestTmPosition(squad)}
         , txp AS (SELECT DISTINCT player_id FROM ${edgeTransferred})
+        , agg AS (
+          SELECT
+            LOWER(TRIM(player)) AS player_key,
+            SUM(COALESCE(goals, 0)) AS goals,
+            SUM(COALESCE(assists, 0)) AS assists,
+            SUM(COALESCE(minutes, 0)) AS minutes
+          FROM ${perf}
+          GROUP BY 1
+        )
         SELECT
           gp.name AS id,
           gp.name AS label,
@@ -267,12 +276,13 @@ router.get('/transfer-network', async (req, res) => {
           COALESCE(gp.nationality, '') AS nationality,
           0 AS market_value,
           COALESCE(gp.photo_url, '') AS photo_url,
-          CAST(NULL AS FLOAT64) AS goals,
-          CAST(NULL AS FLOAT64) AS assists,
-          CAST(NULL AS FLOAT64) AS minutes,
+          COALESCE(ag.goals, 0) AS goals,
+          COALESCE(ag.assists, 0) AS assists,
+          COALESCE(ag.minutes, 0) AS minutes,
           'player' AS node_type
         FROM ${graphPlayers} gp
         INNER JOIN txp ON txp.player_id = gp.player_id
+        LEFT JOIN agg ag ON ag.player_key = LOWER(TRIM(gp.name))
         LEFT JOIN tm_latest_nonempty_position ltm
           ON ltm.player_key = LOWER(TRIM(gp.name))
         ORDER BY gp.name
@@ -338,9 +348,9 @@ router.get('/transfer-network', async (req, res) => {
         COALESCE(v.nationality, v.nationality_full, gp.nationality, '') AS nationality,
         COALESCE(v.market_value_eur, 0) AS market_value,
         COALESCE(gp.photo_url, v.photo_url, '') AS photo_url,
-        p.goals AS goals,
-        p.assists AS assists,
-        p.minutes AS minutes,
+        COALESCE(p.goals, 0) AS goals,
+        COALESCE(p.assists, 0) AS assists,
+        COALESCE(p.minutes, 0) AS minutes,
         'player' AS node_type
       FROM ${perf} p
       LEFT JOIN ${squad} v
