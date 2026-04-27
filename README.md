@@ -23,10 +23,6 @@ A full-stack football analytics platform covering Liverpool FC's entire Premier 
 │   - Match results & scores        - Transfer history & fees             │
 │   - 26 seasons (2000-present)     - 26 seasons (2000-present)           │
 │                                                                         │
-│   StatsBomb Open Data                                                   │
-│   - Event-level shots + xG                                              │
-│   - Free PL seasons: 2003/04 and 2015/16                                │
-│                                                                         │
 └───────────────┬──────────────────────────┬──────────────────────────────┘
                 │                          │
                 │ Residential IP required  │ Datacenter IP OK
@@ -42,9 +38,8 @@ A full-stack football analytics platform covering Liverpool FC's entire Premier 
 │  │  - undetected-chromedriver  │     │  - BeautifulSoup             │   │
 │  │  - Big5 player stat pages   │     │  - Run manually each season  │   │
 │  │  - Squad match logs         │     │                              │   │
-│  │                             │     │  statsbomb/scrape_statsbomb  │   │
-│  │  Windows Task Scheduler:    │     │  - requests (GitHub JSON)    │   │
-│  │  Every Monday 09:00         │     │  - Run once (complete)       │   │
+│  │  Windows Task Scheduler:    │     │                              │   │
+│  │  Every Monday 09:00         │     │                              │   │
 │  └──────────────┬──────────────┘     └──────────────┬───────────────┘   │
 │                 │                                   │                   │
 └─────────────────┼───────────────────────────────────┼───────────────────┘
@@ -65,9 +60,9 @@ A full-stack football analytics platform covering Liverpool FC's entire Premier 
 │  └──────────────────┘  └─────────────────────┘  └──────────────────┘  │
 │                                                                         │
 │  ┌──────────────────┐  ┌─────────────────────┐  ┌──────────────────┐  │
-│  │  tm_squad_values │  │  tm_transfers       │  │  statsbomb_shots │  │
-│  │  market values   │  │  fees, clubs        │  │  xG, locations   │  │
-│  │  21+ seasons     │  │  all directions     │  │  2003/04, 15/16  │  │
+│  │  tm_squad_values │  │  tm_transfers       │  │tm_player_value_ │  │
+│  │  market values   │  │  fees, clubs        │  │history (SCD2 TM) │  │
+│  │  21+ seasons     │  │  all directions     │  │  valid_from/to   │  │
 │  └──────────────────┘  └─────────────────────┘  └──────────────────┘  │
 │                                                                         │
 │  GRAPH TABLES (BigQuery Property Graph)                                 │
@@ -101,10 +96,10 @@ A full-stack football analytics platform covering Liverpool FC's entire Premier 
 │  └──────────────────┘             │  liverpool_player_performance     │  │
 │                                   │  liverpool_squad_value            │  │
 │  dbt tests                        │  liverpool_transfer_balance       │  │
-│  ┌──────────────────┐             │  liverpool_player_values          │  │
-│  │  not_null        │             │  statsbomb_match_xg               │  │
-│  │  unique          │             │  statsbomb_season_xg              │  │
-│  │  accepted_range  │             └──────────────────────────────────┘  │
+│  ┌──────────────────┐             │  liverpool_player_values         │  │
+│  │  not_null        │             └──────────────────────────────────┘  │
+│  │  unique          │                                                   │
+│  │  accepted_range  │                                                   │
 │  │  relationships   │                                                   │
 │  └──────────────────┘                                                   │
 │                                                                         │
@@ -120,7 +115,6 @@ A full-stack football analytics platform covering Liverpool FC's entire Premier 
 │  /api/seasons          →  Available seasons from scraped_seasons        │
 │  /api/transfers/*      →  Squad values, balances, history, player vals  │
 │  /api/player-profile/* →  Combined TM + FBref player profile            │
-│  /api/xg/*             →  StatsBomb xG by match/shot/season             │
 │  /api/graph/*          →  Partnership networks, squad graphs            │
 │  /api/chat             →  GPT-4o-mini with BigQuery context             │
 │                                                                         │
@@ -136,7 +130,6 @@ A full-stack football analytics platform covering Liverpool FC's entire Premier 
 │  Squad page     →  Sortable table + card view + player profile modal   │
 │  Transfers page →  Squad value evolution, transfer spend, player vals  │
 │  Network page   →  D3 force-directed graph, squad connections          │
-│  xG page        →  StatsBomb shot map, xG vs actual goals             │
 │                                                                         │
 │  Season selector  →  Dynamic, populated from /api/seasons              │
 │  AI Chatbot       →  GPT-4o-mini answering questions about the data    │
@@ -164,8 +157,7 @@ A full-stack football analytics platform covering Liverpool FC's entire Premier 
 │                                                                         │
 │  Scheduling                                                             │
 │  ├── FBref scraper: Windows Task Scheduler (laptop, every Monday)      │
-│  ├── TM scraper: manual (run once per season, August)                  │
-│  └── StatsBomb: one-time run, already complete                         │
+│  └── TM scraper: manual (run once per season, August)                    │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -182,8 +174,7 @@ A full-stack football analytics platform covering Liverpool FC's entire Premier 
 | **Transformations** | dbt 1.11 (BigQuery adapter) |
 | **FBref Scraping** | Python, soccerdata, undetected-chromedriver, Playwright |
 | **TM Scraping** | Python, cloudscraper, BeautifulSoup, lxml |
-| **StatsBomb** | Python, requests (GitHub raw JSON) |
-| **Data Validation** | Great Expectations |
+| **Data Validation** | Great Expectations (optional), dbt tests |
 | **Graph Database** | BigQuery Property Graph (GQL / ISO standard) |
 | **AI Chatbot** | OpenAI GPT-4o-mini |
 | **Containerisation** | Docker, Docker Compose |
@@ -288,11 +279,6 @@ liverpool-analytics/
 │   ├── requirements.txt
 │   └── Dockerfile
 │
-├── statsbomb/                  # StatsBomb open data — one-time run, complete
-│   ├── scrape_statsbomb.py     # Shots + xG from GitHub raw JSON
-│   ├── requirements.txt
-│   └── Dockerfile
-│
 ├── dbt/                        # Data transformations
 │   ├── dbt_project.yml
 │   ├── profiles.yml            # Uses ADC (no key file needed)
@@ -307,9 +293,7 @@ liverpool-analytics/
 │           ├── liverpool_player_performance.sql
 │           ├── liverpool_squad_value.sql
 │           ├── liverpool_transfer_balance.sql
-│           ├── liverpool_player_values.sql
-│           ├── statsbomb_match_xg.sql
-│           └── statsbomb_season_xg.sql
+│           └── liverpool_player_values.sql
 │
 ├── backend/
 │   ├── src/
@@ -322,7 +306,6 @@ liverpool-analytics/
 │   │       ├── seasons.js      # Available seasons
 │   │       ├── transfers.js    # Squad values, balance, transfer history
 │   │       ├── playerProfile.js# Combined TM + FBref player profile
-│   │       ├── xg.js           # StatsBomb xG endpoints
 │   │       ├── graph.js        # BigQuery Graph / GQL partnership queries
 │   │       └── chat.js         # GPT-4o-mini AI analyst
 │   ├── package.json
@@ -349,8 +332,7 @@ liverpool-analytics/
 │   │       ├── Defense.jsx     # Tackles, interceptions, clean sheets, discipline
 │   │       ├── Squad.jsx       # Sortable table + card view toggle
 │   │       ├── Transfers.jsx   # Squad value evolution, transfer spend, player vals
-│   │       ├── Graph.jsx       # D3 force-directed network visualization
-│   │       └── XG.jsx          # StatsBomb shot map on canvas pitch
+│   │       └── Graph.jsx       # D3 force-directed network visualization
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── package.json
@@ -376,7 +358,7 @@ liverpool-analytics/
 | `scraped_seasons` | Pipeline run metadata + completion flag | 26 |
 | `tm_squad_values` | Player market values per season | ~800 |
 | `tm_transfers` | Transfer history with fees and clubs | ~600 |
-| `statsbomb_shots` | Event-level shots with xG coordinates | ~2,000 |
+| `tm_player_value_history` | TM market value SCD2 (valid_from / valid_to) | ongoing |
 | `pipeline_runs` | Scraper run log: status, rows, duration | ongoing |
 
 ### dbt Mart Tables
@@ -391,8 +373,6 @@ liverpool-analytics/
 | `liverpool_squad_value` | Table | Total squad value + highest value player per season |
 | `liverpool_transfer_balance` | Table | Spend/received/net spend + biggest signing per season |
 | `liverpool_player_values` | Table | Market value joined with performance, G+A per €10m |
-| `statsbomb_match_xg` | Table | xG for/against + shot counts per match |
-| `statsbomb_season_xg` | Table | Season totals: xG, actual goals, overperformance |
 
 ### BigQuery Property Graph
 
@@ -494,15 +474,6 @@ python transfermarkt/scrape_tm.py 2425 2526
 python transfermarkt/scrape_tm.py
 ```
 
-### StatsBomb (GCP VM — One-Time, Already Complete)
-
-StatsBomb publishes free event data as JSON on GitHub. No bot detection — works from any IP including the VM.
-
-```bash
-# Already run — no need to run again unless table is dropped
-python statsbomb/scrape_statsbomb.py
-```
-
 ### dbt Transformations
 
 ```bash
@@ -550,7 +521,7 @@ dbt test --profiles-dir . --project-dir .
 git push origin main
   ↓
 GitHub Actions — build job
-  → docker build: backend, frontend, scraper, dbt, transfermarkt, statsbomb
+  → docker build: backend, frontend, scraper, dbt, transfermarkt
   → docker push all images to Artifact Registry with :SHA and :latest tags
   ↓
 GitHub Actions — deploy job
@@ -634,7 +605,7 @@ VITE_SEASON=2526 npm run dev
 | FBref scraper on local laptop | FBref blocks GCP/datacenter IPs via Cloudflare Turnstile. Residential IP required |
 | soccerdata over plain Playwright | soccerdata uses undetected-chromedriver which bypasses bot fingerprinting. Plain Playwright gets blocked |
 | TM scraper on GCP VM | Transfermarkt allows datacenter IPs with cloudscraper. No residential IP needed |
-| No Airflow | FBref blocks the VM so Airflow can't run the main scraper. TM + StatsBomb run rarely enough to be manual. Removed to reduce complexity |
+| No Airflow | FBref blocks the VM so Airflow can't run the main scraper. TM runs rarely enough to be manual. Removed to reduce complexity |
 | BigQuery over PostgreSQL | Serverless, no persistent storage management, SQL interface, supports Property Graph natively |
 | ADC over service account keys | Org policy blocks key creation. ADC is also more secure — no credential files to leak |
 | OIDC Workload Identity for CI/CD | No long-lived secrets stored in GitHub. Federated identity via Google |
@@ -675,7 +646,7 @@ VITE_SEASON=2526
 
 ## Data Engineering Work
 
-- [x] Multi-source scraping: FBref + Transfermarkt + StatsBomb
+- [x] Multi-source scraping: FBref + Transfermarkt
 - [x] 26-season historical backfill (2000/01 → 2025/26)
 - [x] BigQuery data warehouse: raw → staging → mart layers
 - [x] dbt transformations: 8 models across 2 layers
@@ -714,8 +685,8 @@ VITE_SEASON=2526
 **FBref advanced stats unavailable on free tier**
 Passing (completion %, key passes, progressive passes), defensive actions (pressures, blocks, clearances), and possession stats (touches, progressive carries, take-ons) all return NaN for Premier League players on the Big5 free tier. FBref restricts these columns to premium subscribers for top 5 leagues.
 
-**Current season xG not available**
-StatsBomb only provides free data for 2003/04 and 2015/16. There is no free source for event-level xG on the current or recent seasons.
+**Event-level xG / shot maps**
+The app does not load third-party event (xG) feeds. Shooting views use FBref aggregate counts from `liverpool_player_performance` (shots, SoT, etc.), not pitch-level event models.
 
 **FBref scraper requires a residential IP**
 The scraper cannot run on the GCP VM. It must run from a laptop on a home internet connection. This is a fundamental constraint of FBref's Cloudflare configuration, not a fixable code issue.

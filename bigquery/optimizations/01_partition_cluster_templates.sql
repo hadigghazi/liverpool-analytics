@@ -17,4 +17,3 @@
 --    ALTER TABLE `PROJECT.DATASET.raw_matches`
 --    SET OPTIONS (require_partition_filter=TRUE);
 --
--- statsbomb_shots: add when that table exists; partition by match_date, cluster by player_id, match_id.
