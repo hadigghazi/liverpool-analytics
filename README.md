@@ -8,6 +8,12 @@ A full-stack football analytics platform covering Liverpool FC's entire Premier 
 
 ## Architecture
 
+### Visual overview
+
+![Architecture diagram](readme-media/diagram.png)
+
+### Detailed layer breakdown
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         DATA SOURCES                                    │
@@ -190,10 +196,81 @@ A full-stack football analytics platform covering Liverpool FC's entire Premier 
 
 ---
 
+## Dashboard Screenshots
+
+### Season overview
+
+Points progression with result-coloured dots, W/D/L donut, form strip, key stats and AI analyst chatbot.
+
+![Season overview](readme-media/season.png)
+
+![Season detail](readme-media/season2.png)
+
+### Attack
+
+Top scorers, shooting efficiency table, goals by venue, and offside counts as a proxy for attacking intent.
+
+![Attack page](readme-media/attack.png)
+
+### Defense
+
+Tackles and interceptions leaderboards, goals conceded timeline, disciplinary table.
+
+![Defense page](readme-media/defense.png)
+
+### Squad
+
+Sortable stats table with card view toggle. Click any player to open the profile modal.
+
+![Squad table view](readme-media/squad.png)
+
+![Squad card view](readme-media/squad2.png)
+
+### Player profile modal
+
+Photo from Transfermarkt CDN, bio, career summary, and tabs for current season stats, season-by-season history, and transfer history with fees.
+
+![Player profile overview](readme-media/player.png)
+
+![Player history tab](readme-media/player2.png)
+
+![Player transfers tab](readme-media/player3.png)
+
+### Transfers
+
+Squad value evolution (2004–present), transfer spend vs income chart, all-time biggest buys and sales, and a value vs performance table (G+A per €10m market value).
+
+![Transfers overview](readme-media/transfers.png)
+
+![Transfers detail](readme-media/transfers2.png)
+
+### Network graph
+
+D3.js force-directed graph. Nodes are players (size = goals, colour = position), edges are PLAYED_WITH relationships (thickness = shared seasons). Filter by position, select season, click any node to explore partnerships.
+
+![Network graph](readme-media/network.gif)
+
+---
+
 ## Repository Structure
 
 ```
 liverpool-analytics/
+│
+├── readme-media/               # Screenshots and diagrams for this README
+│   ├── diagram.png             # Eraser.io architecture diagram
+│   ├── season.png
+│   ├── season2.png
+│   ├── attack.png
+│   ├── defense.png
+│   ├── squad.png
+│   ├── squad2.png
+│   ├── player.png
+│   ├── player2.png
+│   ├── player3.png
+│   ├── transfers.png
+│   ├── transfers2.png
+│   └── network.gif
 │
 ├── .github/
 │   └── workflows/
@@ -367,7 +444,7 @@ FBref uses Cloudflare Turnstile which actively blocks datacenter IPs including G
 | Misc | `stats_misc` | Fouls, fouled, offsides, interceptions, tackles won |
 | Match logs | `matchlogs_for` | PL match dates, opponents, scores, venue |
 
-> **Note:** Passing, defense, and possession stats return NaN for Premier League players on the free Big5 tier. FBref restricts these to premium accounts for top 5 leagues.
+> **Note:** Passing, defense, and possession stats return NaN for Premier League players on the free Big5 tier. FBref restricts these columns to premium subscribers for top 5 leagues.
 
 ```bash
 # Scrape all seasons from 2000/01, skipping already-complete ones
@@ -406,55 +483,39 @@ Transfermarkt uses light Cloudflare protection. `cloudscraper` with Chrome brows
 - **Squad page:** player name, position, age, market value per season
 - **Transfers page:** arrivals and departures with fees, clubs, player ages
 
-Run once per season (typically August when new season squads are confirmed):
-
 ```bash
-# On the GCP VM — scrape current and previous season
-cd transfermarkt
-python scrape_tm.py 2526
+# Scrape current season
+python transfermarkt/scrape_tm.py 2526
 
 # Scrape multiple specific seasons
-python scrape_tm.py 2425 2526
+python transfermarkt/scrape_tm.py 2425 2526
 
 # Scrape last 10 seasons (default if no args)
-python scrape_tm.py
+python transfermarkt/scrape_tm.py
 ```
 
 ### StatsBomb (GCP VM — One-Time, Already Complete)
 
 StatsBomb publishes free event data as JSON on GitHub. No bot detection — works from any IP including the VM.
 
-**Free Premier League seasons available:**
-- 2003/04 (competition_id=2, season_id=44)
-- 2015/16 (competition_id=2, season_id=27)
-
 ```bash
 # Already run — no need to run again unless table is dropped
-cd statsbomb
-python scrape_statsbomb.py
+python statsbomb/scrape_statsbomb.py
 ```
 
 ### dbt Transformations
 
-Run after every scrape to refresh mart tables:
-
 ```bash
 cd dbt
 
-# Windows
+# Windows PowerShell
 $env:GCP_PROJECT = "liverpool-analytics"
 
 # Linux / Mac
 export GCP_PROJECT=liverpool-analytics
 
-# Run all models
 dbt run --profiles-dir . --project-dir .
-
-# Run tests
 dbt test --profiles-dir . --project-dir .
-
-# Run specific models only
-dbt run --profiles-dir . --project-dir . --select liverpool_player_performance
 ```
 
 ---
@@ -494,15 +555,13 @@ GitHub Actions — build job
   ↓
 GitHub Actions — deploy job
   → SSH into VM as deploy user
-  → git pull origin main  (updates docker-compose.yml, nginx config, etc.)
+  → git pull origin main
   → recreate .env from GitHub secrets
   → gcloud auth configure-docker europe-west1-docker.pkg.dev
   → docker compose pull backend frontend
   → docker compose up -d backend frontend nginx
   → docker image prune -f
 ```
-
-Total deploy time: ~4 minutes from push to live.
 
 ---
 
@@ -521,7 +580,6 @@ Total deploy time: ~4 minutes from push to live.
 cd scraper
 pip install -r requirements.txt
 playwright install chromium
-
 python scrape_liverpool.py --current
 ```
 
@@ -530,7 +588,6 @@ python scrape_liverpool.py --current
 ```bash
 cd transfermarkt
 pip install -r requirements.txt
-
 python scrape_tm.py 2526
 ```
 
@@ -540,8 +597,9 @@ python scrape_tm.py 2526
 cd dbt
 pip install dbt-bigquery
 
-# Windows PowerShell
-$env:GCP_PROJECT = "liverpool-analytics"
+$env:GCP_PROJECT = "liverpool-analytics"   # PowerShell
+export GCP_PROJECT=liverpool-analytics     # bash
+
 dbt run --profiles-dir . --project-dir .
 dbt test --profiles-dir . --project-dir .
 ```
@@ -564,49 +622,8 @@ node src/index.js
 ```bash
 cd frontend
 npm install
-
 VITE_SEASON=2526 npm run dev
-# Proxies /api/* to localhost:3000 via vite.config.js
 ```
-
-### Full Stack with Docker Compose
-
-```bash
-cp .env.example .env   # fill in values
-docker compose up -d
-# Visit http://localhost
-```
-
----
-
-## Dashboard Pages
-
-### Season Overview
-Points progression canvas chart (result-colored dots), W/D/L result donut, form strip (last 10), key stats (goals/clean sheets/goal difference/biggest win), full match list, AI Analyst chatbot.
-
-### Attack
-Top scorers bar chart, shooting efficiency table (shots/SoT/conversion%), goals by venue (home vs away bar chart), offside counts (proxy for attacking intent and runs in behind).
-
-### Defense
-Tackles won leaderboard, interceptions leaderboard, goals conceded timeline (green = clean sheet, red = 3+ goals), disciplinary table (YC/RC/fouls committed/fouled).
-
-### Squad
-Sortable stats table (click any column header to sort), card view toggle showing G+A and G/90, click any player row or card to open the Player Profile Modal.
-
-### Player Profile Modal
-- Photo from Transfermarkt CDN
-- Bio: nationality, age, position, market value, contract expiry
-- Career summary: total goals, assists, seasons at Liverpool
-- Tabs: **Overview** (current season stats + market value history bar chart), **History** (season-by-season table), **Transfers** (arrival/departure history with fees)
-
-### Transfers
-Squad value evolution chart (2004–present), transfer spend vs income dual bar chart, all-time biggest buys ranked, all-time biggest sales ranked, player value vs performance table (G+A per €10m market value).
-
-### Network Graph
-D3.js force-directed graph — nodes are players (size = goals, color = position group), edges are PLAYED_WITH relationships (thickness = shared seasons). Filter by position. Season selector. Click any node to see top partnerships in a side panel. Drag nodes to explore.
-
-### xG / Shot Map
-StatsBomb event-level shot data for available seasons (2003/04, 2015/16). Canvas pitch visualization showing shot locations on the attacking half — circle size = xG value, red filled = goal. Filter: all shots / goals only / missed only. xG by match table showing for/against and xG difference.
 
 ---
 
@@ -704,7 +721,7 @@ StatsBomb only provides free data for 2003/04 and 2015/16. There is no free sour
 The scraper cannot run on the GCP VM. It must run from a laptop on a home internet connection. This is a fundamental constraint of FBref's Cloudflare configuration, not a fixable code issue.
 
 **Market value snapshots only**
-Transfermarkt values are captured once per season (end of window). Intra-season value changes (e.g. Salah's value rising mid-season after a hot streak) are not tracked.
+Transfermarkt values are captured once per season (end of window). Intra-season value changes are not tracked.
 
 **2000/01 standard stats missing**
 FBref's Big5 standard page for 2000/01 returns no data. All other pages for that season work. Match data for 2000/01 is complete (38 matches).
@@ -713,8 +730,6 @@ FBref's Big5 standard page for 2000/01 returns no data. All other pages for that
 
 ## Author
 
-**Hadi Ghazi** — Full-stack software engineer, Beirut, Lebanon.
-
-AWS Certified Cloud Practitioner · Pursuing MSc AI & Generative Systems
+**Hadi Ghazi** — Sftware engineer, Beirut, Lebanon.
 
 [GitHub](https://github.com/hadigghazi) · [LinkedIn](https://linkedin.com/in/hadigghazi)
